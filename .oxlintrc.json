@@ -1,7 +1,7 @@
 {
-  "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/crates/oxc_linter/src/rules.rs",
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
   "rules": {
-    "@typescript-eslint/no-explicit-any": "off",
+    "typescript/no-explicit-any": "off",
     "typescript/no-floating-promises": "error"
   },
   "env": {
