@@ -21,7 +21,7 @@ npm run build      # 빌드
 1. 기능 문서(`docs/features/<기능>/README.md`)의 시나리오에 없는 동작은 만들지 않습니다. 시나리오를 먼저 고칩니다.
 2. 코드보다 그 기능의 `flows.md`, `api.md`와 [ERD](erd.md)를 먼저 고칩니다.
 3. Risk를 고치기 전에, 일부러 깨지는 구현으로 문제를 먼저 재현하고 Before 수치를 남깁니다.
-4. 기술이나 설계를 고르면 [ADR](../adr/)을 씁니다.
+4. 되돌리기 어렵고, 다른 선택지와 비교해서 고른 결정이면 [ADR](../adr/)을 씁니다. 익숙한 도구를 고른 것처럼 비교가 없었던 결정은 쓰지 않습니다.
 5. 측정하면 [실험](../experiments/)에 기록하고 README 핵심 결과 표를 고칩니다.
 6. 측정하지 않은 수치는 쓰지 않습니다. 꼭 써야 하면 `(미검증)`으로 표시합니다.
 7. [문제 정의](problem.md)의 범위 밖 기능은 만들지 않습니다.
@@ -46,28 +46,87 @@ npm run build      # 빌드
 - 포맷은 Prettier 기본 설정(`.prettierrc`)을 따릅니다.
 - TypeScript `strict`를 유지합니다.
 - `no-floating-promises`는 error입니다. Promise는 `await`합니다. 의도적으로 결과를 버릴 때만 `void`를 붙입니다.
-- 파일 이름은 Nest 규칙을 따릅니다. 예: `coupon-issue.service.ts`
-- 모듈은 도메인 단위로 나눕니다. 예: `src/coupon/`
+- 파일 이름은 Nest 규칙을 따릅니다. 예: `issue-coupon.service.ts`
+- 모듈은 기능 단위로 나눕니다. 예: `src/coupon/`
+- 이름은 [용어집](glossary.md)의 용어를 영어로 그대로 옮깁니다. 예: 회원 쿠폰 → `MemberCoupon`, 발급 → `issue`
 
-## 계층
+## 아키텍처
+
+모듈러 모놀리스입니다. 포트는 구현을 둘 이상 비교하는 곳에만 둡니다 ([ADR-0002](../adr/0002-modular-monolith-with-one-port.md)).
+
+```
+src/
+  coupon/                          # 모듈 = 기능 = docs/features/coupon/
+    coupon.module.ts
+    index.ts                       # 공개 API. 다른 모듈은 이 파일로만 import
+    issue-coupon/                  # 유스케이스 하나 = 폴더 하나
+      issue-coupon.controller.ts
+      issue-coupon.service.ts      # 흐름 조율, 트랜잭션 경계
+      issue-coupon.dto.ts
+      issue-coupon.service.spec.ts
+    my-coupons/                    # 조회는 포트 없이 DB를 바로 읽는다
+    domain/                        # 순수 TypeScript. Nest·TypeORM·Redis import 금지
+      coupon.ts
+      discount.ts                  # Discount, FixedDiscount, RateDiscount
+    ports/
+      issuance-strategy.ts         # abstract class. 구현을 비교하는 곳만
+    infra/
+      issuance/                    # 포트 구현
+      persistence/                 # TypeORM 엔티티 (데코레이터는 여기에만)
+  order/  product/  cart/  point/  auth/  payment/
+  shared/
+    database/                      # BaseTimeEntity, 데이터 소스, 트랜잭션 설정
+    redis/
+    config/
+bench/k6/                          # 부하 테스트 스크립트
+```
 
 | 계층 | 하는 일 | 하지 않는 일 |
 |---|---|---|
 | Controller | 요청 검증, 응답 변환 | 비즈니스 규칙 |
 | Service | 흐름 조율, 트랜잭션 경계 | 저장소 세부 구현 |
-| `domain/` class | 규칙 (발급 가능 시간, 수량 검사) | Nest 데코레이터, DB·Redis 접근 |
+| `domain/` class | 규칙 (발급 가능 시간, 할인 계산, 주문 금액 검사) | Nest 데코레이터, DB·Redis 접근 |
+| `infra/` | 엔티티, 포트 구현, Redis 호출 | 비즈니스 규칙 |
+
+### 모듈 사이의 규칙
+
+- 다른 모듈은 그 모듈의 `index.ts`가 공개한 서비스만 함수로 호출합니다. HTTP로 부르지 않습니다.
+- 다른 모듈의 테이블을 직접 읽거나 쓰지 않습니다. 예: 주문 모듈은 `member_coupon`을 직접 UPDATE하지 않고, 쿠폰 모듈의 `useCoupons()`를 부릅니다.
+- 이 규칙은 dependency-cruiser로 CI에서 검사합니다. 설정은 첫 코드를 쓸 때 추가합니다.
+  - `domain/`은 `infra/`, `ports/`, `@nestjs/*`, `typeorm`, `ioredis`를 import하지 않는다.
+  - 다른 모듈의 파일은 `index.ts`로만 import한다. `shared/`는 예외다.
+- 규칙 위반 메시지에는 고치는 방법을 적습니다. 에이전트도 그 메시지를 보고 스스로 고칩니다.
+
+### 트랜잭션
+
+- `@nestjs-cls/transactional`과 TypeORM 어댑터를 씁니다. 트랜잭션을 인자로 넘기지 않아도, 같은 요청 안의 다른 모듈 서비스가 같은 트랜잭션에 참여합니다.
+- `typeorm-transactional`은 쓰지 않습니다. 2023년 이후 배포가 없습니다.
+- Redis 호출은 DB 트랜잭션 밖에서 합니다. Redis 왕복 동안 DB 커넥션을 붙잡지 않습니다.
+- CLS 컨텍스트 밖(분리된 비동기 콜백 등)에서 부르면 트랜잭션 없이 실행될 수 있습니다. 3단계 비동기 처리에서 테스트로 확인합니다 (미검증).
+
+## DB와 엔티티
+
+- 스키마는 [ERD](erd.md)가 기준입니다. ERD를 먼저 고치고 마이그레이션을 씁니다.
+- TypeORM `synchronize`는 끕니다. 스키마는 마이그레이션으로만 바꿉니다.
+- 모든 엔티티는 `BaseTimeEntity`(`createdAt`, `updatedAt`)를 상속합니다. TypeORM의 `BaseEntity`(Active Record)와 이름이 겹치지 않게 이 이름을 씁니다.
+- `@DeleteDateColumn`은 soft delete 하는 엔티티(member, coupon, product)에 직접 붙입니다. 부모 클래스에 숨기지 않습니다. 이 컬럼이 있으면 조회 동작이 바뀌기 때문입니다.
+- bigint ID는 `number`로 받습니다. 드라이버 설정으로 int8을 숫자로 바꿉니다. 정확한 옵션 이름은 구현할 때 확인합니다 (미검증).
+- 바뀌지 않는 사실은 DB 제약으로, 바뀌는 정책은 도메인 클래스로 지킵니다 ([ERD 공통 규칙](erd.md#공통-규칙)).
+- 동시에 바뀌는 수량(재고, 포인트 잔액, 회원 쿠폰 상태)은 조건부 UPDATE 한 문장으로 바꿉니다. `findOne` → 값 변경 → `save()`는 쓰지 않습니다. 읽은 값으로 덮어써서 갱신 손실이 생깁니다. 이 방식은 실험의 Before 구현에서만 일부러 씁니다.
 
 ## 구현을 바꿔 끼우는 곳
 
-- 같은 기능을 여러 방식으로 비교하는 곳은 abstract class로 추상화합니다. 예: `CouponStock`
-- TypeScript `interface`는 실행 시점에 사라져서 Nest DI 토큰으로 쓸 수 없습니다. 그래서 abstract class를 토큰으로 씁니다.
-- 어떤 구현을 쓸지는 모듈의 `{ provide: CouponStock, useClass: ... }` 한 곳에서만 정합니다.
-- 바꿔 끼우지 않는 곳에는 추상화를 만들지 않습니다.
-- 일부러 깨지게 만든 실험용 구현(예: `no-lock.stock.ts`)은 지우지 않습니다. Before 수치를 다시 낼 때 씁니다.
+- 같은 기능을 여러 방식으로 비교하는 곳은 abstract class로 추상화합니다. 예: `IssuanceStrategy`
+- TypeScript `interface`는 실행 시점에 사라져서 Nest DI 토큰으로 쓸 수 없습니다. 그래서 abstract class를 토큰으로 씁니다. abstract class에는 추상 메서드만 둡니다.
+- 어떤 구현을 쓸지는 모듈의 `useFactory` 한 곳에서 환경 변수로 정합니다. 예: `ISSUANCE_STRATEGY=redis`
+- 바꿔 끼우지 않는 곳에는 추상화를 만들지 않습니다. 구현이 하나뿐이고 테스트 대역도 쓰지 않는 포트가 생기면 지웁니다.
+- 일부러 깨지게 만든 실험용 구현은 지우지 않습니다. Before 수치를 다시 낼 때 씁니다.
 
 ## 하지 않는 것
 
-- 처음부터 헥사고날이나 DDD 폴더 구조를 쓰지 않습니다.
+- 모든 저장소에 포트·어댑터·매퍼를 두는 정석 헥사고날 구조를 쓰지 않습니다. 진입점이 둘 이상이 되거나(예: 3단계 비동기 워커) 도메인 규칙이 매핑 비용보다 커지면 다시 검토합니다.
+- `@nestjs/cqrs` 같은 명령·이벤트 버스를 1·2단계에서 쓰지 않습니다.
+- 사라지면 안 되는 부수 효과를 프로세스 안 이벤트(`@nestjs/event-emitter`)로 보내지 않습니다. 서버가 죽으면 사라집니다.
 - 커밋과 PR에 AI 작성 표시를 넣지 않습니다.
 
 ---
