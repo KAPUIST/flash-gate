@@ -25,6 +25,7 @@ docs/
 | [erd.md](reference/erd.md) | 전체 ERD, 제약 조건, 인덱스, 상태 값 |
 | [api.md](reference/api.md) | 인증, 멱등성, 에러 형식, HTTP 상태 코드 |
 | [conventions.md](reference/conventions.md) | 명령, 작업 순서, 코드 스타일, 계층, 문서 규칙 |
+| [glossary.md](reference/glossary.md) | 도메인 용어와 뜻, 피할 말 |
 
 ## features: 기능별
 

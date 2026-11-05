@@ -31,6 +31,7 @@ npm run build      # 빌드
 - 한 기능에만 해당하는 내용은 `docs/features/<기능>/`에 둡니다. 여러 기능에 걸친 내용만 `docs/reference/`에 둡니다.
 - 기능 폴더 이름은 `src/` 모듈 이름과 같게 씁니다. 예: `src/coupon/` ↔ `docs/features/coupon/`
 - 기능을 고칠 때는 그 기능 폴더의 문서를 먼저 읽고, 코드와 같은 커밋에서 문서를 고칩니다.
+- 도메인 용어는 [용어집](glossary.md)에 둡니다. 저장소 루트에 `GLOSSARY.md`를 만들지 않습니다.
 
 ### 새 기능을 추가할 때
 
@@ -71,4 +72,4 @@ npm run build      # 빌드
 
 ---
 
-[← 이전: API 공통 규칙](api.md) | [문서 지도](../README.md)
+[← 이전: API 공통 규칙](api.md) | [문서 지도](../README.md) | [다음: 용어집 →](glossary.md)

@@ -49,6 +49,7 @@ flowchart LR
 | [쿠폰 기능](docs/features/coupon/) | 1단계 시나리오, Risk, Flow, API |
 | [ERD](docs/reference/erd.md) | 전체 테이블, 제약 조건, 인덱스 |
 | [개발 규칙](docs/reference/conventions.md) | 명령, 작업 순서, 코드 스타일, 문서 규칙 |
+| [용어집](docs/reference/glossary.md) | 도메인 용어와 뜻, 피할 말 |
 | [ADR](docs/adr/) · [실험](docs/experiments/) | 결정 기록, 부하 테스트 기록 |
 
 ## 6. 실행 방법
