@@ -18,8 +18,8 @@
 | 단계 | 범위 | 기능 문서 | 주요 Risk | 상태 |
 |---|---|---|---|---|
 | 1 | 로그인, 한정 수량 쿠폰 발급 | [인증](../features/auth/), [쿠폰](../features/coupon/) | R1~R5 | 설계 완료, 구현 전 |
-| 2 | 상품 조회, 장바구니, 주문, 쿠폰·포인트 사용, 취소, 구매 확정 | [상품](../features/product/), [장바구니](../features/cart/), [주문](../features/order/), [포인트](../features/point/) | R6~R12 | 설계 완료, 구현 전 |
-| 3 | Mock 결제, 포인트 비동기 적립, 자동 구매 확정 | [결제](../features/payment/), [포인트](../features/point/) | R13~R14 | 설계 초안 |
+| 2 | 상품 조회, 장바구니, 주문, 쿠폰·포인트 사용, 취소, 구매 확정, 자동 구매 확정 | [상품](../features/product/), [장바구니](../features/cart/), [주문](../features/order/), [포인트](../features/point/) | R6~R12 | 설계 완료, 구현 전 |
+| 3 | Mock 결제, 포인트 비동기 적립, 자동 구매 확정 기준을 결제 승인 시각으로 변경 | [결제](../features/payment/), [포인트](../features/point/) | R13~R14 | 설계 초안 |
 
 ## 가정 트래픽
 

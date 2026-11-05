@@ -13,7 +13,7 @@ DB만으로 수량을 지키면 모든 요청이 쿠폰 행 하나의 잠금을 
 
 | 선택지 | 장점 | 단점 |
 |---|---|---|
-| A. DB 조건부 UPDATE (`issued_quantity < total_quantity`) + 같은 트랜잭션에서 INSERT | 기준이 한 곳이라 어긋날 일이 없다. 초과 발급·부분 실패를 트랜잭션이 막는다 | 소진될 9만 건까지 모두 쿠폰 행 잠금을 기다린다 |
+| A. DB 조건부 UPDATE (`issued_quantity < total_quantity`) + 같은 트랜잭션에서 INSERT (A를 쓰려면 `issued_quantity` 컬럼이 필요하다) | 기준이 한 곳이라 어긋날 일이 없다. 초과 발급·부분 실패를 트랜잭션이 막는다 | 소진될 9만 건까지 모두 쿠폰 행 잠금을 기다린다 |
 | B. Redis는 문지기, DB 카운터가 기준 | DB CHECK가 초과 발급을 끝까지 막는다 | 카운터가 두 곳이다. 어긋나면 덜 발급된다. 성공 요청은 여전히 쿠폰 행 잠금을 기다린다 |
 | C. **Redis가 결정, DB는 회원 쿠폰 행만 기록, 복구는 DB 기준** | 소진 요청이 DB에 가지 않는다. 쿠폰 행 잠금이 없다. 카운터가 Redis 한 곳이다 | DB가 초과 발급을 스스로 막지 않는다. Redis가 재시작되면 DB 기준으로 복구해야 한다 |
 
@@ -22,9 +22,9 @@ DB만으로 수량을 지키면 모든 요청이 쿠폰 행 하나의 잠금을 
 C를 씁니다.
 
 1. `SADD coupon:{id}:members {memberId}` → 0이면 이미 받은 회원 (409)
-2. `INCR coupon:{id}:count` → 한정 수량을 넘으면 `SREM`으로 1번을 되돌리고 소진 (409)
+2. `INCR coupon:{id}:count` → 한정 수량을 넘으면 `SREM`과 `DECR`로 되돌리고 소진 (409). `DECR`을 하지 않으면 발급 수가 한정 수량을 넘어 쌓여서, 저장 실패로 되돌린 자리가 다시 열리지 않는다
 3. DB에 회원 쿠폰 INSERT. `UNIQUE(member_id, coupon_id)`가 중복을 한 번 더 막는다
-4. 3이 실패하면 Redis를 되돌리고 503
+4. 3이 실패하면 `SREM`과 `DECR`로 되돌리고 503. 단, UNIQUE 위반이면 회원이 실제로 이미 받은 것이므로 `DECR`만 하고 회원은 SET에 남긴 채 409
 
 DB 카운터(`coupon.issued_quantity`)는 두지 않습니다. 발급 수는 회원 쿠폰 행 수입니다 ([집계 규칙](../reference/erd.md#집계-규칙)).
 
@@ -33,7 +33,7 @@ DB 카운터(`coupon.issued_quantity`)는 두지 않습니다. 발급 수는 회
 - Redis를 쓰는 목적은 DB 부담을 줄이는 것입니다. 가장 큰 이득은 "소진될 요청을 DB까지 보내지 않는 것"이고, 이 이득은 B와 C 모두 얻습니다. C는 거기에 더해 성공 요청도 쿠폰 행 잠금을 기다리지 않습니다.
 - 어긋남은 같은 숫자를 두 곳에서 따로 셀 때 생깁니다. C는 숫자를 Redis 한 곳에서만 세고, Redis 상태는 언제든 DB 행으로 다시 만들 수 있습니다.
 - 국내 선착순 쿠폰 사례(올리브영 등)도 "Redis가 판정, DB 기록은 따로"인 구조입니다 ([조사 노트](../../../research_notes/), 저장소 밖).
-- 실험으로 검증하기 전의 판단입니다. [실험](../experiments/)에서 A와 C를 같은 시나리오로 재서 이 ADR에 링크합니다.
+- 실험으로 검증하기 전의 판단입니다. [실험](../experiments/)에서 [쿠폰 Flow](../features/coupon/flows.md)의 Before 구현(`CountThenInsertIssuance`, `PessimisticLockIssuance`)과 `RedisFirstIssuance`를 같은 시나리오로 재서 이 ADR에 링크합니다.
 
 ## 감수하는 것
 

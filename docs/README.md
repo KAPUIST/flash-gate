@@ -27,8 +27,9 @@ docs/
 | [user-flows.md](reference/user-flows.md) | 전체 여정, 기능별 흐름 번호, 흐름 사이에 걸린 규칙 |
 | [erd.md](reference/erd.md) | 전체 ERD, 제약 조건, 인덱스, 반정규화, 상태 값, 삭제 정책, 집계 규칙 |
 | [api.md](reference/api.md) | 경로, 인증, 멱등성, 페이지, 에러 형식, HTTP 상태 코드 |
-| [conventions.md](reference/conventions.md) | 명령, 작업 순서, 아키텍처, 트랜잭션, DB 규칙, 문서 규칙 |
+| [conventions.md](reference/conventions.md) | 명령, 작업 순서, 아키텍처, 트랜잭션, DB 규칙, 테스트, 문서 규칙 |
 | [glossary.md](reference/glossary.md) | 도메인 용어와 뜻, 피할 말 |
+| [roadmap.md](reference/roadmap.md) | 구현 순서와 작업마다 끝난 기준 |
 
 ## features: 기능별
 

@@ -79,6 +79,7 @@ flowchart LR
 | [API 공통 규칙](docs/reference/api.md) | 경로, 인증, 멱등성, 에러 형식 |
 | [개발 규칙](docs/reference/conventions.md) | 명령, 작업 순서, 아키텍처, 트랜잭션, DB 규칙 |
 | [용어집](docs/reference/glossary.md) | 도메인 용어와 뜻, 피할 말 |
+| [구현 순서](docs/reference/roadmap.md) | 코드를 만드는 순서와 끝난 기준 |
 | 기능 | [인증](docs/features/auth/) · [쿠폰](docs/features/coupon/) · [상품](docs/features/product/) · [장바구니](docs/features/cart/) · [주문](docs/features/order/) · [포인트](docs/features/point/) · [결제](docs/features/payment/) |
 | [ADR](docs/adr/) · [실험](docs/experiments/) | 결정 기록, 부하 테스트 기록과 계획 |
 
