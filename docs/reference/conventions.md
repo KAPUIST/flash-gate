@@ -91,7 +91,7 @@ bench/k6/                          # 부하 테스트 스크립트
 ### 모듈 사이의 규칙
 
 - 다른 모듈은 그 모듈의 `index.ts`가 공개한 서비스만 함수로 호출합니다. HTTP로 부르지 않습니다.
-- 다른 모듈의 테이블을 직접 읽거나 쓰지 않습니다. 예: 주문 모듈은 `member_coupon`을 직접 UPDATE하지 않고, 쿠폰 모듈의 `useCoupons()`를 부릅니다.
+- 다른 모듈의 테이블을 직접 읽거나 쓰지 않습니다. 예: 주문 모듈은 `member_coupon`을 직접 UPDATE하지 않고, 쿠폰 모듈의 `useCoupon()`을 회원 쿠폰 한 장마다 부릅니다.
 - 이 규칙은 dependency-cruiser로 CI에서 검사합니다. 설정은 첫 코드를 쓸 때 추가합니다.
   - `domain/`은 `infra/`, `ports/`, `@nestjs/*`, `typeorm`, `ioredis`를 import하지 않는다.
   - 다른 모듈의 파일은 `index.ts`로만 import한다. `shared/`는 예외다.
@@ -108,11 +108,28 @@ bench/k6/                          # 부하 테스트 스크립트
 
 - 스키마는 [ERD](erd.md)가 기준입니다. ERD를 먼저 고치고 마이그레이션을 씁니다.
 - TypeORM `synchronize`는 끕니다. 스키마는 마이그레이션으로만 바꿉니다.
-- 모든 엔티티는 `BaseTimeEntity`(`createdAt`, `updatedAt`)를 상속합니다. TypeORM의 `BaseEntity`(Active Record)와 이름이 겹치지 않게 이 이름을 씁니다.
+- 모든 엔티티는 `BaseTimeEntity`(`createdAt`, `updatedAt`)를 상속합니다. 예외: `point_history`는 고치지 않는 테이블이라 `createdAt`만 둡니다. TypeORM의 `BaseEntity`(Active Record)와 이름이 겹치지 않게 이 이름을 씁니다.
 - `@DeleteDateColumn`은 soft delete 하는 엔티티(member, coupon, product)에 직접 붙입니다. 부모 클래스에 숨기지 않습니다. 이 컬럼이 있으면 조회 동작이 바뀌기 때문입니다.
 - bigint ID는 `number`로 받습니다. 드라이버 설정으로 int8을 숫자로 바꿉니다. 정확한 옵션 이름은 구현할 때 확인합니다 (미검증).
 - 바뀌지 않는 사실은 DB 제약으로, 바뀌는 정책은 도메인 클래스로 지킵니다 ([ERD 공통 규칙](erd.md#공통-규칙)).
 - 동시에 바뀌는 수량(재고, 포인트 잔액, 회원 쿠폰 상태)은 조건부 UPDATE 한 문장으로 바꿉니다. `findOne` → 값 변경 → `save()`는 쓰지 않습니다. 읽은 값으로 덮어써서 갱신 손실이 생깁니다. 이 방식은 실험의 Before 구현에서만 일부러 씁니다.
+
+## 테스트
+
+테스트는 공개된 경계(seam)에서만 합니다. 내부 구현을 직접 부르지 않아서, 구현을 바꿔도 테스트는 그대로 남습니다.
+
+| 경계 | 무엇을 | 도구 | 잡는 것 | 못 잡는 것 |
+|---|---|---|---|---|
+| HTTP (e2e) | 시나리오의 요청과 응답. 실제 PostgreSQL·Redis | Vitest + supertest + docker compose | 시나리오 분기, 에러 코드, 트랜잭션, 제약 | 대량 부하 |
+| 동시성 테스트 | 같은 요청 N개를 동시에 보내고 DB 상태 확인 | e2e와 같음 + `Promise.all` | `R2`, `R7`, `R10`, `R11`처럼 동시에만 깨지는 규칙 | 실제 트래픽 크기 |
+| 도메인 클래스 (단위) | 할인 계산, 상품별 나누기, 포인트 규칙, 발급 가능 시간 | Vitest | 금액 계산 (`R9`), 규칙 경계값 | DB 동작 |
+| 포트 구현 (계약 테스트) | `IssuanceStrategy`의 모든 구현이 같은 테스트를 통과 | Vitest + 실제 Redis·PostgreSQL | 구현을 바꿔도 결과가 같은지 | 성능 차이 |
+| 부하 (실험) | k6 시나리오 | k6 | `R1`, `R4`, `R6` 같은 수치 | 정확한 원인 (로그·쿼리로 따로 본다) |
+
+- 테스트 이름은 시나리오 문장으로 씁니다. 예: `"마지막 1장에 두 회원이 동시에 요청하면 한 명만 받는다"`
+- 기대값은 코드와 같은 방식으로 다시 계산하지 않습니다. 문서의 계산 예시(예: [주문 금액 예시](../features/order/README.md)) 숫자를 그대로 씁니다.
+- DB를 목(mock)으로 바꾸지 않습니다. 이 프로젝트의 문제는 대부분 DB와 Redis의 동시성에서 생깁니다.
+- 실험의 Before 구현(일부러 깨지는 구현)도 테스트가 있습니다. "이 구현은 동시 요청에서 초과 발급한다"를 확인하는 테스트입니다.
 
 ## 구현을 바꿔 끼우는 곳
 

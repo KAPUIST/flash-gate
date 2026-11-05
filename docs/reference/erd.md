@@ -1,7 +1,7 @@
 # ERD
 
 테이블은 여러 기능이 같이 쓰기 때문에 ERD는 여기 한 곳에만 둡니다. 기능 문서에서는 이 문서를 링크합니다.
-1·2단계 테이블과 3단계 포인트 테이블까지 확정했습니다. 3단계 결제 테이블은 [결제 기능](../features/payment/)을 설계할 때 추가합니다.
+1·2단계 테이블(포인트 테이블 포함)을 확정했습니다. 포인트 비동기 적립은 3단계입니다. 3단계 결제 테이블은 [결제 기능](../features/payment/)을 설계할 때 추가합니다.
 
 ## 한눈에 보기
 
@@ -164,7 +164,7 @@ erDiagram
 
 | 항목 | 규칙 | 이유 |
 |---|---|---|
-| PK | `bigint GENERATED ALWAYS AS IDENTITY`. TypeScript에서는 `number` | 인증·공개 API가 없는 규모라 UUID의 이점이 작다. 10만 명·1만 장 규모라 `number` 안전 범위를 넘지 않는다 |
+| PK | `bigint GENERATED ALWAYS AS IDENTITY`. TypeScript에서는 `number` | 외부에 노출해도 되는 ID만 다루는 규모라 UUID의 이점이 작다. 10만 명·1만 장 규모라 `number` 안전 범위를 넘지 않는다 |
 | 시각 | 모두 `timestamptz` | 시간대가 다른 서버·클라이언트가 같은 순간을 같은 값으로 본다 |
 | 금액 | 원 단위 `integer` | 원 미만이 없다. 소수 오차가 없다 |
 | 생성·수정 시각 | 모든 엔티티가 `BaseTimeEntity`(`created_at`, `updated_at`)를 상속. 예외: `point_history`는 고치지 않는 테이블이라 `created_at`만 둔다 | 장애를 조사할 때 "언제 바뀌었나"가 필요하다 |
@@ -211,7 +211,7 @@ erDiagram
 - 할인 규칙(정률 1~100 정수, 정률이면 최대 할인 금액 필수, 원 미만 버림)은 도메인 클래스(`FixedDiscount`, `RateDiscount`)가 지킨다. 시드도 도메인 클래스를 거쳐 저장한다.
 - `PRODUCT` 쿠폰은 대상(`coupon_product` 또는 `coupon_brand`)이 하나 이상 있어야 하고, `ORDER` 쿠폰은 대상이 없어야 한다. 테이블을 넘는 규칙이라 도메인 클래스가 검사한다.
 - 발급이 시작된 뒤에는 한정 수량과 할인 조건을 바꿀 수 없다. 이 규칙도 도메인 클래스가 지킨다.
-- 쿠폰 삭제는 발급 시작 전에만 한다: `UPDATE coupon SET deleted_at = now() WHERE id = ? AND issue_starts_at > now()`. 조건 검사와 삭제가 한 문장이라 그 사이에 발급이 끼어들 수 없다. 그래서 삭제된 쿠폰에는 회원 쿠폰이 없다.
+- 쿠폰 삭제는 발급 시작 10분 전까지만 한다 (가정): `UPDATE coupon SET deleted_at = now() WHERE id = ? AND issue_starts_at > now() + interval '10 minutes'`. 조건 검사와 삭제가 한 문장이라 그 사이에 발급이 끼어들 수 없다. 10분 여유는 발급 검사에 쓰는 쿠폰 정보 캐시(1초)와 발급 준비(시작 5분 전)보다 앞서 삭제가 끝나게 하려는 것이다. 그래서 삭제된 쿠폰에는 회원 쿠폰이 없다.
 
 ### member_coupon (회원 쿠폰)
 
@@ -225,7 +225,7 @@ erDiagram
 | used_at | timestamptz | NULL. `ck_member_coupon_used`: `(status = 'USED') = (used_at IS NOT NULL)` |
 | created_at, updated_at | timestamptz | NOT NULL. `deleted_at` 없음 |
 
-- `uq_member_coupon_member_coupon`: `UNIQUE(member_id, coupon_id)`. 1인 1매를 DB가 마지막으로 막는다 (`R2`). "내 쿠폰 목록" 조회 인덱스도 겸한다.
+- `uq_member_coupon_member_coupon`: `UNIQUE(member_id, coupon_id)`. 1인 1매를 DB가 마지막으로 막는다 (`R2`). 회원 쿠폰 목록 조회 인덱스도 겸한다.
 - `ix_member_coupon_coupon_id`: 발급 수를 세거나 Redis를 복구할 때 쓴다.
 - `issued_at`과 `created_at`을 따로 둔다. 지금은 바로 저장해서 거의 같다. 개선 단계에서 저장을 비동기로 바꾸면 달라진다. 선착순의 증거는 `issued_at`이다.
 - 만료는 저장하지 않는다. `status = 'ISSUED'`이고 지금 시각이 `coupon.expires_at` 이후면 만료다. 배치가 필요 없고, 상태가 늦게 바뀌는 일이 없다.
@@ -321,6 +321,7 @@ erDiagram
 - `ck_orders_confirmed`: `(status = 'CONFIRMED') = (confirmed_at IS NOT NULL)`
 - `uq_orders_member_idempotency_key`: `UNIQUE(member_id, idempotency_key)`. 같은 주문 요청이 두 번 와도 주문은 하나다 (`R10`).
 - `ix_orders_member_ordered_at`: `(member_id, ordered_at DESC)`. 내 주문 목록.
+- `ix_orders_ordered_at_ordered`: `(ordered_at) WHERE status = 'ORDERED'`. 자동 구매 확정 배치가 7일 지난 주문을 찾는다. 3단계부터는 결제 승인 시각이 기준이 된다 ([결제 기능](../features/payment/)).
 - 주문 합계와 주문 상품 합계가 같아야 한다 (`R9`). 테이블을 넘는 규칙이라 도메인 클래스가 만들 때 검사하고 테스트로 고정한다.
 - 결제 상태(결제 대기, 승인 중 등)는 3단계에서 [결제 기능](../features/payment/)과 함께 추가한다.
 
@@ -343,7 +344,7 @@ erDiagram
 
 - `uq_order_item_order_product`: `UNIQUE(order_id, product_id)`. 한 주문에 같은 상품을 두 줄로 넣지 않는다.
 - `ix_order_item_product_id`: 상품별 판매 집계.
-- 주문 쿠폰 할인과 포인트는 상품 금액(상품 쿠폰 적용 후) 비율로 나눈다. 원 미만은 버리고, 남은 원 단위는 금액이 가장 큰 상품에 더한다. 지금은 전체 취소만 하지만, 나중에 부분 취소의 환불 근거가 된다.
+- 주문 쿠폰 할인과 포인트는 상품 금액(상품 쿠폰 적용 후) 비율로 나눈다. 원 미만은 버리고, 남은 원 단위는 금액이 가장 큰 상품에 더한다. 지금은 전체 취소만 하지만, 나중에 부분 취소 때 돌려줄 금액의 근거가 된다.
 
 ### order_coupon (주문에 쓴 쿠폰)
 
@@ -390,7 +391,7 @@ erDiagram
 | 반정규화한 곳 | 이유 | 지키는 장치 |
 |---|---|---|
 | `order_item`의 `product_name`, `unit_price` | 주문 시점의 사실이다. 상품이 바뀌거나 삭제돼도 이력은 그대로여야 한다 | 복사한 뒤 바꾸지 않는다 |
-| `order_item`의 `amount`, `payment_amount` (계산값) | 매번 계산하지 않고, 부분 취소 환불의 근거로 쓴다 | CHECK |
+| `order_item`의 `amount`, `payment_amount` (계산값) | 매번 계산하지 않고, 부분 취소 때 돌려줄 금액의 근거로 쓴다 | CHECK |
 | `orders`의 금액 합계 | 주문 목록에서 주문 상품을 다 읽지 않는다 | 도메인 클래스 검사 + 테스트 (`R9`) |
 | `order_coupon.discount_amount` | 할인 조건이 나중에 바뀌어도 이 주문에서 깎인 금액은 그대로여야 한다 | 복사한 뒤 바꾸지 않는다. 발급 시작 뒤 조건 변경 금지 |
 | `member_point.balance`, `point_history.balance_after` | 잔액을 볼 때마다 내역 전체를 더하지 않는다 | 같은 트랜잭션에서 함께 바꾼다 + `balance = SUM(amount)` 테스트 |
@@ -431,8 +432,8 @@ stateDiagram-v2
 
 | 테이블 | 삭제 방법 | 이유 |
 |---|---|---|
-| member | soft delete (`deleted_at`) | 탈퇴 회원의 주문·쿠폰 이력을 지킨다. 이메일은 부분 UNIQUE |
-| coupon | soft delete, 발급 시작 전에만 | 시작 전에는 회원 쿠폰이 없어서 JOIN에서 이력이 사라지지 않는다 |
+| member | soft delete (`deleted_at`) | 탈퇴 회원의 주문과 회원 쿠폰 기록을 지킨다. 이메일은 부분 UNIQUE |
+| coupon | soft delete, 발급 시작 10분 전까지만 | 시작 전에는 회원 쿠폰이 없어서 JOIN에서 이력이 사라지지 않는다 |
 | product | soft delete, 판매 중지된 상품만 | 주문 이력은 `order_item` 복사본을 읽는다 |
 | member_coupon | 지우지 않음. 상태만 바뀐다 | 한정 수량과 1인 1매를 이 테이블의 COUNT와 UNIQUE로 판정한다. soft delete를 넣으면 앱과 DB가 행을 다르게 본다 |
 | cart_item | 실제로 지움 | 잠깐 쓰는 데이터라 이력이 필요 없다 |
@@ -477,7 +478,8 @@ DB가 기준이고, Redis는 언제든 DB에서 다시 만들 수 있어야 합�
 
 | 항목 | 넣을 시점 |
 |---|---|
-| 결제 테이블과 결제 상태 | 3단계 [결제](../features/payment/) |
+| `payment` 테이블, `orders` 결제 상태(`PAYMENT_PENDING`, `PAYING`, `PAYMENT_FAILED`, `CANCELING`)와 `payment_failed_at` | 3단계. 제안은 [결제 기능 ERD 제안](../features/payment/README.md) |
+| `outbox_event` 테이블 (포인트 비동기 적립, 결제 승인 취소 재시도) | 3단계. 제안은 [포인트 Flow](../features/point/flows.md) |
 | 회원 쿠폰 회수 (`REVOKED`) | 관리자 기능 |
 | 브랜드 한정 주문 쿠폰 ("나이키 5만 원 이상 구매 시") | 필요해질 때. 기준 금액 계산이 하나 더 생긴다 |
 | 쿠폰 정책 분리 (`coupon_policy`) | 여러 쿠폰이 같은 정책을 공유할 때 |
