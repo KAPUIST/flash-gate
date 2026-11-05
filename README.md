@@ -7,12 +7,12 @@
 - **상황**: 1만 장 한정 쿠폰에 10만 명이 행사 시작 1분 안에 몰린다 (가정)
 - **목표**: 초과 발급 0건, 중복 발급 0건, 3,000 RPS에서 p99 300ms 이하
 - **진행**: 1단계 한정 수량 쿠폰 발급 → 2단계 주문·재고 → 3단계 결제·적립금
-- 자세한 내용: [문제 정의](docs/00-problem.md)
+- 자세한 내용: [문제 정의](docs/reference/problem.md)
 - 참고한 프로젝트: [f-lab-edu/cyber-monday](https://github.com/f-lab-edu/cyber-monday)
 
 ## 2. 핵심 결과
 
-Risk ID는 [사용자 시나리오](docs/01-scenarios.md)에서 정합니다. 아직 측정 전입니다.
+Risk ID는 기능 문서에서 정합니다. 예: [쿠폰](docs/features/coupon/) 아직 측정 전입니다.
 
 | Risk | 문제 | 해결 | Before → After | 근거 |
 |---|---|---|---|---|
@@ -39,17 +39,17 @@ flowchart LR
     API --> Cache[(Redis)]
 ```
 
-## 5. 문서 지도
+## 5. 문서
 
-| 순서 | 문서 | 내용 |
-|---|---|---|
-| 00 | [문제 정의](docs/00-problem.md) | 가정 트래픽, 목표 수치, 범위 밖 |
-| 01 | [사용자 시나리오](docs/01-scenarios.md) | 케이스별 흐름과 깨지는 지점(Risk) |
-| 02 | [ERD](docs/02-erd.md) | 테이블, 제약 조건, 인덱스 이유 |
-| 03 | [Flow](docs/03-flows.md) | 핵심 케이스 시퀀스 다이어그램 |
-| 04 | [API](docs/04-api.md) | 엔드포인트, 멱등성, 에러 코드 |
-| - | [ADR](docs/adr/) | 기술·설계 결정 기록 |
-| - | [실험](docs/experiments/) | 부하 테스트와 개선 기록 |
+전체 목록은 [문서 지도](docs/README.md)에 있습니다.
+
+| 문서 | 내용 |
+|---|---|
+| [문제 정의](docs/reference/problem.md) | 가정 트래픽, 단계, 목표 수치, 범위 밖 |
+| [쿠폰 기능](docs/features/coupon/) | 1단계 시나리오, Risk, Flow, API |
+| [ERD](docs/reference/erd.md) | 전체 테이블, 제약 조건, 인덱스 |
+| [개발 규칙](docs/reference/conventions.md) | 명령, 작업 순서, 코드 스타일, 문서 규칙 |
+| [ADR](docs/adr/) · [실험](docs/experiments/) | 결정 기록, 부하 테스트 기록 |
 
 ## 6. 실행 방법
 

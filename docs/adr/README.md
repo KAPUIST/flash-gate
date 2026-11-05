@@ -24,4 +24,4 @@
 
 ---
 
-[← Risk 목록](../01-scenarios.md#risk-목록) | [README](../../README.md) | [실험 목록](../experiments/)
+[← 문서 지도](../README.md) | [README 핵심 결과](../../README.md#2-핵심-결과) | [실험 목록](../experiments/)

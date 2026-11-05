@@ -26,4 +26,4 @@ Risk마다 최소 한 번 깨뜨리고, 고치고, 다시 잽니다. 파일 이�
 
 ---
 
-[← Risk 목록](../01-scenarios.md#risk-목록) | [README](../../README.md) | [ADR 목록](../adr/)
+[← 문서 지도](../README.md) | [README 핵심 결과](../../README.md#2-핵심-결과) | [ADR 목록](../adr/)
