@@ -1,6 +1,6 @@
 # 포인트: Flow
 
-Risk가 있거나 여러 모듈이 엮이는 흐름만 그립니다. 잔액·내역 조회(시나리오 1, 2)는 DB를 한 번 읽는 것뿐이라 그리지 않습니다.
+Risk가 있거나 여러 모듈이 엮이는 흐름만 그립니다. 포인트 잔액 보기와 포인트 내역 보기는 DB를 한 번 읽는 것뿐이라 그리지 않습니다.
 
 ## 공통: 잔액과 내역은 한 트랜잭션에서 함께 바꾼다
 
@@ -19,16 +19,16 @@ INSERT INTO point_history (member_id, type, amount, balance_after, order_id, cre
 VALUES (:memberId, :type, :delta, :balance, :orderId, now());
 ```
 
-- 사용은 `delta < 0`입니다. 바뀐 행이 0개면 잔액 부족입니다 (`R11`).
+- 사용은 `delta < 0`입니다. 바뀐 행이 0개면 잔액 부족입니다 (포인트 이중 사용).
 - 적립·사용 취소는 `delta > 0`입니다. 잔액 행이 없을 수 있어서, 먼저 `INSERT INTO member_point (member_id, balance) VALUES (:memberId, 0) ON CONFLICT (member_id) DO NOTHING`을 실행합니다.
-- `findOne`으로 읽고 잔액을 계산해서 `save()`하는 방식은 쓰지 않습니다. 동시에 두 주문이 같은 잔액을 읽으면 차감 하나가 사라지므로, 이 방식은 `R11` 실험의 Before 구현에서만 씁니다.
+- `findOne`으로 읽고 잔액을 계산해서 `save()`하는 방식은 쓰지 않습니다. 동시에 두 주문이 같은 잔액을 읽으면 차감 하나가 사라지므로, 이 방식은 포인트 동시 사용 실험의 Before 구현에서만 씁니다.
 - 내역 INSERT가 `uq_point_history_order_type`에 걸리면 트랜잭션 전체가 롤백되고, 잔액도 함께 원래대로 돌아갑니다.
 
 ---
 
 ## 시나리오 3. 주문에 포인트 쓰기
 
-관련 Risk: `R11`
+관련 Risk: 포인트 이중 사용
 
 주문 트랜잭션의 일부입니다. 재고·쿠폰 차감은 [주문 Flow](../order/flows.md)에 있습니다.
 
@@ -128,7 +128,7 @@ sequenceDiagram
 
 ## 시나리오 5. 구매 확정으로 포인트 적립
 
-관련 Risk: `R12`
+관련 Risk: 포인트 이중 적립
 
 ### 결제 전: 확정과 같은 트랜잭션에서 적립
 
@@ -159,7 +159,7 @@ sequenceDiagram
 ```
 
 - 확정 처리가 두 번 실행되면 두 번째는 주문 상태 조건(`WHERE status = 'ORDERED'`)에서 막힙니다.
-- 혹시 그 조건을 지나도 `EARN` 내역 INSERT가 `uq_point_history_order_type`에 걸려서 트랜잭션 전체가 롤백됩니다 (`R12`).
+- 혹시 그 조건을 지나도 `EARN` 내역 INSERT가 `uq_point_history_order_type`에 걸려서 트랜잭션 전체가 롤백됩니다 (포인트 이중 적립).
 
 ### 결제를 붙인 뒤: outbox와 워커로 비동기 적립
 
@@ -209,13 +209,13 @@ sequenceDiagram
 | 워커가 적립을 커밋한 뒤 ack 전에 죽음 | BullMQ가 같은 job을 다시 줍니다 |
 | 어느 경우든 | `uq_point_history_order_type`이 두 번째 `EARN`을 막고, 워커는 UNIQUE 위반을 성공으로 보고 ack합니다 |
 
-- 큐 도구는 BullMQ를 추천합니다. 이미 Redis를 쓰고 있고, BullMQ가 재시도·지연·실패 목록을 기본으로 줍니다. Redis Streams는 소비자 그룹과 미처리 메시지 회수를 직접 만들어야 합니다. 최종 선택은 3단계 구현 때 정합니다 (구현 시 확정).
+- 큐 도구는 BullMQ를 추천합니다. 이미 Redis를 쓰고 있고, BullMQ가 재시도·지연·실패 목록을 기본으로 줍니다. Redis Streams는 소비자 그룹과 미처리 메시지 회수를 직접 만들어야 합니다. 최종 선택은 결제를 붙이는 구현 때 정합니다 (구현 시 확정).
 - 큐는 "더 빨리 전달하는 길"일 뿐이고, 기준은 outbox 테이블입니다. 큐 데이터가 사라져도 `published_at`을 비우면 다시 보낼 수 있습니다.
 - 재시도를 다 써도 실패한 job은 실패 목록에 남기고, 운영자가 원인을 고친 뒤 다시 넣습니다.
 
 #### outbox 테이블 (ERD 제안, 초안)
 
-[ERD](../../reference/erd.md)에는 아직 없고, 3단계를 설계할 때 추가합니다.
+[ERD](../../reference/erd.md)에는 아직 없고, 결제를 설계할 때 추가합니다.
 
 | 컬럼 | 타입 | 제약 |
 |---|---|---|
@@ -228,7 +228,7 @@ sequenceDiagram
 
 - `uq_outbox_event_type_aggregate`: `UNIQUE(event_type, aggregate_id)`. 한 주문에 적립 요청은 하나입니다.
 - `ix_outbox_event_unpublished`: `(id) WHERE published_at IS NULL`. 릴레이가 이 인덱스로 보낼 행을 찾습니다.
-- 다 보낸 행을 지울지, 보관 기간을 둘지는 3단계에서 정합니다.
+- 다 보낸 행을 지울지, 보관 기간을 둘지는 결제를 붙일 때 정합니다.
 
 #### 모든 확정 주문이 결국 적립되었는지 확인
 
@@ -243,7 +243,7 @@ SELECT o.id
    AND h.id IS NULL;
 ```
 
-이 쿼리 결과는 0건이어야 하고, 3단계 부하 테스트 뒤 검증 쿼리로 씁니다.
+이 쿼리 결과는 0건이어야 하고, 결제를 붙인 뒤의 부하 테스트가 끝나면 검증 쿼리로 씁니다.
 
 ---
 

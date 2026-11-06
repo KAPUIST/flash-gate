@@ -1,27 +1,27 @@
 # ERD
 
 테이블은 여러 기능이 같이 쓰므로 ERD는 여기 한 곳에만 두고, 기능 문서에서는 이 문서를 링크합니다.
-1·2단계 테이블(포인트 테이블 포함)을 확정했습니다. 포인트 비동기 적립은 3단계입니다. 3단계 결제 테이블은 [결제 기능](../features/payment/)을 설계할 때 추가합니다.
+쿠폰 발급과 주문에 쓰는 테이블(포인트 테이블 포함)을 확정했습니다. 포인트 비동기 적립은 결제를 붙일 때 만듭니다. 결제 테이블은 [결제 기능](../features/payment/)을 설계할 때 추가합니다.
 
 ## 한눈에 보기
 
-| 테이블 | 모듈 | 단계 | 한 줄 설명 |
+| 테이블 | 모듈 | 만드는 순서 | 한 줄 설명 |
 |---|---|---|---|
-| [member](#member-회원) | auth | 1 | 회원. 이메일과 비밀번호 해시 |
-| [coupon](#coupon-쿠폰) | coupon | 1 | 쿠폰 한 종류. 한정 수량, 할인, 발급 기간, 사용 기한 |
-| [member_coupon](#member_coupon-회원-쿠폰) | coupon | 1 | 회원 쿠폰. 1인 1매 |
-| [coupon_product](#coupon_product-coupon_brand-상품-쿠폰의-대상) | coupon | 2 | 상품 쿠폰을 쓸 수 있는 상품 |
-| [coupon_brand](#coupon_product-coupon_brand-상품-쿠폰의-대상) | coupon | 2 | 상품 쿠폰을 쓸 수 있는 브랜드 |
-| [brand](#brand-브랜드) | product | 2 | 브랜드 |
-| [product](#product-상품) | product | 2 | 상품. 판매 중지와 삭제를 따로 표현 |
-| [product_stock](#product_stock-재고) | product | 2 | 재고 잔액 |
-| [cart](#cart-cart_item-장바구니) | cart | 2 | 장바구니. 회원당 1개 |
-| [cart_item](#cart-cart_item-장바구니) | cart | 2 | 장바구니 항목 |
-| [orders](#orders-주문) | order | 2 | 주문 |
-| [order_item](#order_item-주문-상품) | order | 2 | 주문 상품. 주문 시점 이름·가격과 상품별 할인 |
-| [order_coupon](#order_coupon-주문에-쓴-쿠폰) | order | 2 | 주문에 쓴 쿠폰 |
-| [member_point](#member_point-point_history-포인트) | point | 2 | 포인트 잔액 |
-| [point_history](#member_point-point_history-포인트) | point | 2 | 포인트 내역. 추가만 하고 고치지 않음 |
+| [member](#member-회원) | auth | 쿠폰 발급 | 회원. 이메일과 비밀번호 해시 |
+| [coupon](#coupon-쿠폰) | coupon | 쿠폰 발급 | 쿠폰 한 종류. 한정 수량, 할인, 발급 기간, 사용 기한 |
+| [member_coupon](#member_coupon-회원-쿠폰) | coupon | 쿠폰 발급 | 회원 쿠폰. 1인 1매 |
+| [coupon_product](#coupon_product-coupon_brand-상품-쿠폰의-대상) | coupon | 주문 | 상품 쿠폰을 쓸 수 있는 상품 |
+| [coupon_brand](#coupon_product-coupon_brand-상품-쿠폰의-대상) | coupon | 주문 | 상품 쿠폰을 쓸 수 있는 브랜드 |
+| [brand](#brand-브랜드) | product | 주문 | 브랜드 |
+| [product](#product-상품) | product | 주문 | 상품. 판매 중지와 삭제를 따로 표현 |
+| [product_stock](#product_stock-재고) | product | 주문 | 재고 잔액 |
+| [cart](#cart-cart_item-장바구니) | cart | 주문 | 장바구니. 회원당 1개 |
+| [cart_item](#cart-cart_item-장바구니) | cart | 주문 | 장바구니 항목 |
+| [orders](#orders-주문) | order | 주문 | 주문 |
+| [order_item](#order_item-주문-상품) | order | 주문 | 주문 상품. 주문 시점 이름·가격과 상품별 할인 |
+| [order_coupon](#order_coupon-주문에-쓴-쿠폰) | order | 주문 | 주문에 쓴 쿠폰 |
+| [member_point](#member_point-point_history-포인트) | point | 주문 | 포인트 잔액 |
+| [point_history](#member_point-point_history-포인트) | point | 주문 | 포인트 내역. 추가만 하고 고치지 않음 |
 
 ## 다이어그램
 
@@ -225,7 +225,7 @@ erDiagram
 | used_at | timestamptz | NULL. `ck_member_coupon_used`: `(status = 'USED') = (used_at IS NOT NULL)` |
 | created_at, updated_at | timestamptz | NOT NULL. `deleted_at` 없음 |
 
-- `uq_member_coupon_member_coupon`: `UNIQUE(member_id, coupon_id)`. 1인 1매를 DB가 마지막으로 막습니다 (`R2`). 회원 쿠폰 목록 조회 인덱스도 겸합니다.
+- `uq_member_coupon_member_coupon`: `UNIQUE(member_id, coupon_id)`. 1인 1매를 DB가 마지막으로 막습니다 (같은 회원 중복 요청). 회원 쿠폰 목록 조회 인덱스도 겸합니다.
 - `ix_member_coupon_coupon_id`: 발급 수를 세거나 Redis를 복구할 때 씁니다.
 - `issued_at`과 `created_at`을 따로 둡니다. 지금은 바로 저장해서 둘이 거의 같지만, 개선 단계에서 저장을 비동기로 바꾸면 달라집니다. 선착순의 증거는 `issued_at`입니다.
 - 만료는 저장하지 않습니다. `status = 'ISSUED'`이고 지금 시각이 `coupon.expires_at` 이후면 만료입니다. 배치가 필요 없고, 상태가 늦게 바뀌는 일도 없습니다.
@@ -277,7 +277,7 @@ erDiagram
 
 - 주문이 몰리면 재고 행이 계속 잠기므로, 상품 조회가 그 잠금을 기다리지 않게 상품과 나눕니다.
 - 재고는 취소하면 다시 늘어나는 잔액이라서, 쿠폰과 달리 남은 수량을 저장합니다.
-- 차감은 `UPDATE product_stock SET quantity = quantity - :n WHERE product_id = :id AND quantity >= :n`입니다. 바뀐 행이 0개면 품절입니다 (`R6`).
+- 차감은 `UPDATE product_stock SET quantity = quantity - :n WHERE product_id = :id AND quantity >= :n`입니다. 바뀐 행이 0개면 품절입니다 (초과 판매).
 
 ### cart, cart_item (장바구니)
 
@@ -319,11 +319,11 @@ erDiagram
 - `ck_orders_amount`: `discount_amount >= 0 AND point_amount >= 0 AND payment_amount >= 0 AND payment_amount = product_amount - discount_amount - point_amount`
 - `ck_orders_canceled`: `(status = 'CANCELED') = (canceled_at IS NOT NULL)`
 - `ck_orders_confirmed`: `(status = 'CONFIRMED') = (confirmed_at IS NOT NULL)`
-- `uq_orders_member_idempotency_key`: `UNIQUE(member_id, idempotency_key)`. 같은 주문 요청이 두 번 와도 주문은 하나입니다 (`R10`).
+- `uq_orders_member_idempotency_key`: `UNIQUE(member_id, idempotency_key)`. 같은 주문 요청이 두 번 와도 주문은 하나입니다 (중복 주문).
 - `ix_orders_member_ordered_at`: `(member_id, ordered_at DESC)`. 내 주문 목록에 씁니다.
-- `ix_orders_ordered_at_ordered`: `(ordered_at) WHERE status = 'ORDERED'`. 자동 구매 확정 배치가 7일 지난 주문을 찾습니다. 3단계부터는 결제 승인 시각이 기준이 됩니다 ([결제 기능](../features/payment/)).
-- 주문 합계와 주문 상품 합계가 같아야 합니다 (`R9`). 테이블을 넘는 규칙이라 도메인 클래스가 만들 때 검사하고 테스트로 고정합니다.
-- 결제 상태(결제 대기, 승인 중 등)는 3단계에서 [결제 기능](../features/payment/)과 함께 추가합니다.
+- `ix_orders_ordered_at_ordered`: `(ordered_at) WHERE status = 'ORDERED'`. 자동 구매 확정 배치가 7일 지난 주문을 찾습니다. 결제를 붙인 뒤에는 결제 승인 시각이 기준이 됩니다 ([결제 기능](../features/payment/)).
+- 주문 합계와 주문 상품 합계가 같아야 합니다 (금액 불일치). 테이블을 넘는 규칙이라 도메인 클래스가 만들 때 검사하고 테스트로 고정합니다.
+- 결제 상태(결제 대기, 승인 중 등)는 결제를 붙일 때 [결제 기능](../features/payment/)과 함께 추가합니다.
 
 ### order_item (주문 상품)
 
@@ -360,7 +360,7 @@ erDiagram
 - `uq_order_coupon_order_member_coupon`: `UNIQUE(order_id, member_coupon_id)`. 한 주문에 같은 쿠폰을 두 번 쓰지 못합니다.
 - `uq_order_coupon_order_item`: `UNIQUE(order_item_id) WHERE order_item_id IS NOT NULL`. 상품 하나에 상품 쿠폰은 1장입니다.
 - `uq_order_coupon_order_level`: `UNIQUE(order_id) WHERE order_item_id IS NULL`. 주문 하나에 주문 쿠폰은 1장입니다.
-- 취소된 주문의 기록이 남아도 그 쿠폰을 다른 주문에 다시 쓸 수 있어야 해서, `member_coupon_id`에는 UNIQUE를 걸지 않습니다. 쿠폰이 지금 쓰이고 있는지는 `member_coupon.status`만 보고 판단합니다 (`R7`).
+- 취소된 주문의 기록이 남아도 그 쿠폰을 다른 주문에 다시 쓸 수 있어야 해서, `member_coupon_id`에는 UNIQUE를 걸지 않습니다. 쿠폰이 지금 쓰이고 있는지는 `member_coupon.status`만 보고 판단합니다 (쿠폰 이중 사용).
 
 ### member_point, point_history (포인트)
 
@@ -378,8 +378,8 @@ erDiagram
 
 - `member_point`에는 `created_at`, `updated_at`이 있습니다. 처음 적립할 때 `INSERT ... ON CONFLICT DO NOTHING`으로 만들고, 행이 없으면 잔액 0입니다.
 - 회원 테이블과 나누는 이유는 재고와 같습니다. 주문할 때마다 잔액 행이 잠기는데, 회원 조회가 그 잠금을 기다리지 않게 합니다.
-- 사용은 `UPDATE member_point SET balance = balance - :x WHERE member_id = :id AND balance >= :x`입니다. 바뀐 행이 0개면 잔액 부족입니다 (`R11`).
-- `uq_point_history_order_type`: `UNIQUE(order_id, type) WHERE order_id IS NOT NULL`. 비동기 적립 메시지가 두 번 와도 한 번만 적립됩니다 (`R12`).
+- 사용은 `UPDATE member_point SET balance = balance - :x WHERE member_id = :id AND balance >= :x`입니다. 바뀐 행이 0개면 잔액 부족입니다 (포인트 이중 사용).
+- `uq_point_history_order_type`: `UNIQUE(order_id, type) WHERE order_id IS NOT NULL`. 비동기 적립 메시지가 두 번 와도 한 번만 적립됩니다 (포인트 이중 적립).
 - `ix_point_history_member_created_at`: `(member_id, created_at DESC)`. 내 포인트 내역에 씁니다.
 - 잔액과 내역은 항상 같은 트랜잭션에서 바꾸고, `balance = SUM(amount)`를 테스트로 확인합니다.
 - 포인트는 구매 확정 때 쌓입니다. 확정된 주문은 취소할 수 없어서 적립을 되돌리는 내역(`EARN_CANCEL`)이 없습니다.
@@ -392,10 +392,10 @@ erDiagram
 |---|---|---|
 | `order_item`의 `product_name`, `unit_price` | 주문 시점의 사실이라서 상품이 바뀌거나 삭제돼도 이력은 그대로여야 합니다 | 복사한 뒤 바꾸지 않습니다 |
 | `order_item`의 `amount`, `payment_amount` (계산값) | 매번 계산하지 않고, 부분 취소 때 돌려줄 금액의 근거로 씁니다 | CHECK |
-| `orders`의 금액 합계 | 주문 목록에서 주문 상품을 다 읽지 않습니다 | 도메인 클래스 검사 + 테스트 (`R9`) |
+| `orders`의 금액 합계 | 주문 목록에서 주문 상품을 다 읽지 않습니다 | 도메인 클래스 검사 + 테스트 (금액 불일치) |
 | `order_coupon.discount_amount` | 할인 조건이 나중에 바뀌어도 이 주문에서 깎인 금액은 그대로여야 합니다 | 복사한 뒤 바꾸지 않습니다. 발급 시작 뒤 조건 변경 금지 |
 | `member_point.balance`, `point_history.balance_after` | 잔액을 볼 때마다 내역 전체를 더하지 않습니다 | 같은 트랜잭션에서 함께 변경 + `balance = SUM(amount)` 테스트 |
-| Redis 발급 수와 회원 쿠폰 수 | 발급 결정을 DB 앞에서 합니다 ([ADR-0001](../adr/0001-redis-decides-coupon-issue.md)) | DB 기준 복구. 어긋나면 DB가 맞습니다 (`R3`, `R5`) |
+| Redis 발급 수와 회원 쿠폰 수 | 발급 결정을 DB 앞에서 합니다 ([ADR-0001](../adr/0001-redis-decides-coupon-issue.md)) | DB 기준 복구. 어긋나면 DB가 맞습니다 (발급 수 불일치, Redis 재시작) |
 
 ## 상태 값과 전이
 
@@ -410,7 +410,7 @@ stateDiagram-v2
 
 ```mermaid
 stateDiagram-v2
-    state "주문 (orders.status, 2단계)" as O {
+    state "주문 (orders.status)" as O {
         [*] --> ORDERED: 주문
         ORDERED --> CANCELED: 주문 취소 (재고·쿠폰·포인트 복구)
         ORDERED --> CONFIRMED: 구매 확정 (포인트 적립)
@@ -478,8 +478,8 @@ DB가 기준이고, Redis는 언제든 DB에서 다시 만들 수 있어야 합�
 
 | 항목 | 넣을 시점 |
 |---|---|
-| `payment` 테이블, `orders` 결제 상태(`PAYMENT_PENDING`, `PAYING`, `PAYMENT_FAILED`, `CANCELING`)와 `payment_failed_at` | 3단계. 제안은 [결제 기능 ERD 제안](../features/payment/README.md) |
-| `outbox_event` 테이블 (포인트 비동기 적립, 결제 승인 취소 재시도) | 3단계. 제안은 [포인트 Flow](../features/point/flows.md) |
+| `payment` 테이블, `orders` 결제 상태(`PAYMENT_PENDING`, `PAYING`, `PAYMENT_FAILED`, `CANCELING`)와 `payment_failed_at` | 결제를 붙일 때. 제안은 [결제 기능 ERD 제안](../features/payment/README.md) |
+| `outbox_event` 테이블 (포인트 비동기 적립, 결제 승인 취소 재시도) | 결제를 붙일 때. 제안은 [포인트 Flow](../features/point/flows.md) |
 | 회원 쿠폰 회수 (`REVOKED`) | 관리자 기능 |
 | 브랜드 한정 주문 쿠폰 ("나이키 5만 원 이상 구매 시") | 필요해질 때. 기준 금액 계산이 하나 더 생깁니다 |
 | 쿠폰 정책 분리 (`coupon_policy`) | 여러 쿠폰이 같은 정책을 공유할 때 |
@@ -487,7 +487,7 @@ DB가 기준이고, Redis는 언제든 DB에서 다시 만들 수 있어야 합�
 | 쿠폰 코드 입력 | 코드를 입력해 받는 기능이 생길 때 |
 | 관리용·전시용 이름 분리, 이미지 경로 | 관리자 화면이 생길 때 |
 | 포인트 유효기간 | 필요해질 때. 적립 건마다 남은 금액을 관리하는 테이블 2개가 더 생깁니다 |
-| Redis 순번 기록 (`issue_seq`) | `R5`를 고칠 때 대안으로 비교. 실패 보상으로 1을 빼면 순번이 다시 쓰여 UNIQUE와 부딪힙니다 |
+| Redis 순번 기록 (`issue_seq`) | Redis 재시작 Risk를 고칠 때 대안으로 비교. 실패 보상으로 1을 빼면 순번이 다시 쓰여 UNIQUE와 부딪힙니다 |
 | 적용 범위 정책 (`duplicate_yn` 등 쿠폰 중복 규칙) | "상품마다 1장 + 주문마다 1장" 구조로 충분하지 않을 때 |
 
 ---

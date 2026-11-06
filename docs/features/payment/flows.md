@@ -1,6 +1,6 @@
 # 결제: Flow
 
-> 3단계 초안이라 상태 값과 `payment` 테이블은 [README의 제안](README.md#erd-제안-초안)을 따릅니다.
+> 결제 설계 초안이라 상태 값과 `payment` 테이블은 [README의 제안](README.md#erd-제안-초안)을 따릅니다.
 
 모든 시나리오에 Mock PG가 참여합니다. Mock PG는 docker compose 서비스로, 앱과 다른 프로세스에서 띄웁니다. 그래야 네트워크 타임아웃이 실제로 일어납니다 (가정, 구현 시 확정).
 
@@ -9,12 +9,12 @@
 | 규칙 | 이유 |
 |---|---|
 | 결제 모듈은 `orders`를 직접 바꾸지 않습니다. 주문 상태 변경과 재고·쿠폰·포인트 복구는 [주문 모듈의 공개 서비스](README.md#order-모듈에-필요한-공개-서비스-제안)를 부릅니다 | 테이블은 소유 모듈만 씁니다 ([ADR-0002](../../adr/0002-modular-monolith-with-one-port.md)). 복구 순서와 잠금 순서는 주문 모듈 한 곳이 지킵니다 |
-| 모듈 의존은 결제에서 주문으로 가는 한 방향이고, 주문 모듈은 결제 모듈을 부르지 않습니다 | 순환 의존을 만들지 않으려는 것입니다. 그래서 3단계의 결제된 주문 취소(시나리오 6)는 결제 모듈의 유스케이스가 맡습니다 |
+| 모듈 의존은 결제에서 주문으로 가는 한 방향이고, 주문 모듈은 결제 모듈을 부르지 않습니다 | 순환 의존을 만들지 않으려는 것입니다. 그래서 결제를 붙인 뒤의 결제된 주문 취소는 결제 모듈의 유스케이스가 맡습니다 |
 | 결제사 호출은 DB 트랜잭션 밖에서 합니다 | 결제사 응답을 기다리는 동안 DB 커넥션과 행 잠금을 붙잡지 않습니다 |
 | 결제사 호출 전에 상태를 먼저 바꾸고 커밋합니다 (`PAYMENT_PENDING → PAYING`, `ORDERED → CANCELING`) | 호출 도중 서버가 죽어도 "결제사에 무언가를 보냈다"는 흔적이 DB에 남고, 결과 확인 배치가 그 흔적을 보고 마무리합니다 |
 | 결제사에는 항상 `pg_idempotency_key`를 보냅니다 | 같은 승인을 다시 보내도 결제사가 한 번만 승인합니다. 결과를 모를 때는 이 키로 조회합니다 |
-| 결과를 모르면 실패로 처리하지 않습니다 | 실패로 처리해 재고를 풀었는데 실제로는 승인됐다면 돈만 나갑니다 (`R14`) |
-| 승인 뒤에는 먼저 다시 시도하고, 완료할 수 없을 때만 승인을 취소합니다 | 승인 결과는 결제사에 남아 있으므로, 보상인 승인 취소는 마지막 수단입니다 (`R13`) |
+| 결과를 모르면 실패로 처리하지 않습니다 | 실패로 처리해 재고를 풀었는데 실제로는 승인됐다면 돈만 나갑니다 (결제 결과 모름) |
+| 승인 뒤에는 먼저 다시 시도하고, 완료할 수 없을 때만 승인을 취소합니다 | 승인 결과는 결제사에 남아 있으므로, 보상인 승인 취소는 마지막 수단입니다 (결제 보상 실패) |
 
 주문 모듈 서비스가 하는 일은 [README의 표](README.md#order-모듈에-필요한-공개-서비스-제안)에 있고, 아래 그림의 `O`가 그 서비스입니다.
 
@@ -51,7 +51,7 @@ sequenceDiagram
             Note over A,D: 커밋
             A-->>U: 200 결제 완료 (주문 상태 ORDERED)
         else 금액 다름
-            A->>PG: 승인 취소 (보상, 시나리오 5)
+            A->>PG: 승인 취소 (보상, 승인 뒤 주문 처리 실패와 같음)
             A-->>U: 409 PAYMENT_AMOUNT_MISMATCH
         end
     end
@@ -72,7 +72,7 @@ sequenceDiagram
     participant D as PostgreSQL
     participant PG as Mock PG
 
-    Note over A,D: 주문은 PAYING, payment는 REQUESTED (시나리오 1과 같음)
+    Note over A,D: 주문은 PAYING, payment는 REQUESTED (주문 후 결제 승인과 같음)
     A->>PG: 승인 요청
     PG-->>A: 거절 (사유)
     Note over A,D: 트랜잭션
@@ -84,7 +84,7 @@ sequenceDiagram
     A-->>U: 409 PAYMENT_DECLINED (사유)
 ```
 
-- 복구는 2단계 주문 취소와 같은 서비스를 같은 순서로 부릅니다 ([주문 Flow](../order/flows.md), [포인트 Flow](../point/flows.md#시나리오-4-주문-취소로-포인트-돌려받기)). 주문의 다음 상태가 `CANCELED`가 아니라 `PAYMENT_FAILED`라는 점만 다릅니다.
+- 복구는 결제 전 주문 취소와 같은 서비스를 같은 순서로 부릅니다 ([주문 Flow](../order/flows.md), [포인트 Flow](../point/flows.md#시나리오-4-주문-취소로-포인트-돌려받기)). 주문의 다음 상태가 `CANCELED`가 아니라 `PAYMENT_FAILED`라는 점만 다릅니다.
 - 포인트 사용 취소 내역(`USE_CANCEL`)은 주문당 하나라서, 결제 실패로 한 번 복구된 주문을 다시 복구하지 않습니다.
 
 ---
@@ -106,7 +106,7 @@ sequenceDiagram
         alt 바뀐 행 0개 (그사이 회원이 결제를 시작함)
             Note over B,D: 건너뜀
         else 실패 처리됨
-            Note over O: 재고·쿠폰·포인트 복구 (시나리오 2와 같음)
+            Note over O: 재고·쿠폰·포인트 복구 (결제 거절과 같음)
             Note over B,D: 커밋
         end
     end
@@ -120,7 +120,7 @@ sequenceDiagram
 
 ## 시나리오 4. 승인 요청의 응답을 받지 못함
 
-관련 Risk: `R14`
+관련 Risk: 결제 결과 모름
 
 ```mermaid
 sequenceDiagram
@@ -162,7 +162,7 @@ sequenceDiagram
 
 ## 시나리오 5. 승인은 됐는데 주문 처리가 실패
 
-관련 Risk: `R13`
+관련 Risk: 결제 보상 실패
 
 ```mermaid
 sequenceDiagram
@@ -191,7 +191,7 @@ sequenceDiagram
             W->>D: payment CANCELED
             W->>O: failPayment(orderId)
         else 취소 실패
-            Note over W: 지수 백오프로 재시도. 다 써도 실패하면 운영자 확인 목록 (R13)
+            Note over W: 지수 백오프로 재시도. 다 써도 실패하면 운영자 확인 목록 (결제 보상 실패)
         end
     end
 ```
@@ -201,17 +201,17 @@ sequenceDiagram
 | 실패 지점 | 돈 | 재고·쿠폰·포인트 | 처리 |
 |---|---|---|---|
 | 승인 요청 전 서버 죽음 (`PAYING` 커밋 뒤) | 안 나감 | 예약됨 | 결과 확인 배치가 조회해서 "기록 없음"이면 `failPayment`, 복구 |
-| 승인 요청 중 타임아웃 | 모름 | 예약됨 | 시나리오 4 |
+| 승인 요청 중 타임아웃 | 모름 | 예약됨 | 응답을 받지 못한 경우의 결과 확인 배치로 처리 |
 | 승인 뒤 DB 처리 실패 | 나감 | 예약됨 | 결과 확인 배치가 조회해서 승인됨이면 `completePayment` 다시 시도 |
 | 승인 금액이 주문 금액과 다름 | 나감 | 예약됨 | 승인 취소(보상) 뒤 `failPayment`, 복구 |
-| 승인 취소 실패 | 나감 | 예약됨 | outbox로 재시도. 끝까지 실패하면 운영자 (`R13`) |
-| 결제 취소 성공 뒤 DB 처리 실패 | 결제 취소됨 | 차감 상태 | 시나리오 6 워커가 DB 처리만 다시 합니다 |
+| 승인 취소 실패 | 나감 | 예약됨 | outbox로 재시도. 끝까지 실패하면 운영자 (결제 보상 실패) |
+| 결제 취소 성공 뒤 DB 처리 실패 | 결제 취소됨 | 차감 상태 | 결제된 주문 취소의 워커가 DB 처리만 다시 합니다 |
 
 ---
 
 ## 시나리오 6. 결제된 주문 취소
 
-3단계에서는 결제된 주문의 취소에 결제 취소가 필요합니다. 모듈 의존이 결제에서 주문으로 가는 한 방향이라, `POST /orders/{orderId}/cancel`은 3단계부터 결제 모듈의 유스케이스가 처리합니다 (제안).
+결제를 붙인 뒤에는 결제된 주문의 취소에 결제 취소가 필요합니다. 모듈 의존이 결제에서 주문으로 가는 한 방향이라, `POST /orders/{orderId}/cancel`은 이때부터 결제 모듈의 유스케이스가 처리합니다 (제안).
 
 ```mermaid
 sequenceDiagram
@@ -238,7 +238,7 @@ sequenceDiagram
             A->>D: payment CANCELED
             A->>O: completeCancel(orderId)
             O->>D: UPDATE orders SET status = 'CANCELED', canceled_at = now() WHERE id = ? AND status = 'CANCELING'
-            Note over O: 재고·쿠폰·포인트 복구 (2단계 주문 취소와 같음)
+            Note over O: 재고·쿠폰·포인트 복구 (결제 전 주문 취소와 같음)
             Note over A,D: 커밋
             A-->>U: 200 취소 완료
         else 거절·타임아웃·DB 실패
@@ -252,7 +252,7 @@ sequenceDiagram
 
 - Mock PG는 같은 결제사 거래 ID의 취소를 여러 번 받아도 한 번만 처리해서, 워커가 마음 놓고 재시도할 수 있습니다.
 - `CANCELING`인 동안 구매 확정(`WHERE status = 'ORDERED'`)은 실패하므로, 확정과 취소가 동시에 일어나지 않습니다.
-- 결제 취소가 끝까지 거절되면(예: 결제사 정책) 운영자 확인 목록에 올립니다. 주문을 `ORDERED`로 되돌릴지는 3단계에서 정합니다.
+- 결제 취소가 끝까지 거절되면(예: 결제사 정책) 운영자 확인 목록에 올립니다. 주문을 `ORDERED`로 되돌릴지는 결제를 붙일 때 정합니다.
 
 ---
 

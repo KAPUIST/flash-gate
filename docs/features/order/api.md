@@ -7,14 +7,14 @@
 
 | 메서드 | 경로 | 설명 | 멱등 | 시나리오 |
 |---|---|---|---|---|
-| POST | /orders/preview | 주문서 보기, 금액 미리 보기. 저장하지 않음 | 조회라서 멱등 | 1, 2 |
-| POST | /orders | 주문하기 | `Idempotency-Key` 필수 | 3, 4 |
-| GET | /me/orders | 내 주문 목록 | 조회 | 5 |
-| GET | /orders/{orderId} | 주문 상세 | 조회 | 5 |
-| POST | /orders/{orderId}/cancel | 주문 취소 | 상태 조건으로 한 번만 바뀜 | 6 |
-| POST | /orders/{orderId}/confirm | 구매 확정 | 상태 조건으로 한 번만 바뀜 | 7 |
+| POST | /orders/preview | 주문서 보기, 금액 미리 보기. 저장하지 않음 | 조회라서 멱등 | [주문서 보기](README.md#시나리오-1-주문서-보기), [금액 미리 보기](README.md#시나리오-2-쿠폰과-포인트를-골라-금액-미리-보기) |
+| POST | /orders | 주문하기 | `Idempotency-Key` 필수 | [주문하기](README.md#시나리오-3-주문하기), [같은 주문을 두 번 보냄](README.md#시나리오-4-같은-주문을-두-번-보냄) |
+| GET | /me/orders | 내 주문 목록 | 조회 | [내 주문 목록·상세 보기](README.md#시나리오-5-내-주문-목록상세-보기) |
+| GET | /orders/{orderId} | 주문 상세 | 조회 | [내 주문 목록·상세 보기](README.md#시나리오-5-내-주문-목록상세-보기) |
+| POST | /orders/{orderId}/cancel | 주문 취소 | 상태 조건으로 한 번만 바뀜 | [주문 취소](README.md#시나리오-6-주문-취소) |
+| POST | /orders/{orderId}/confirm | 구매 확정 | 상태 조건으로 한 번만 바뀜 | [구매 확정](README.md#시나리오-7-구매-확정) |
 
-자동 구매 확정(시나리오 8)은 배치라서 API가 없습니다.
+[자동 구매 확정](README.md#시나리오-8-시스템-자동-구매-확정)은 배치라서 API가 없습니다.
 
 ## 이 API가 응답하는 에러 코드
 
@@ -31,15 +31,15 @@
 | 404 | `ORDER_PRODUCT_NOT_FOUND` | 없는 상품 ID | |
 | 409 | `ORDER_AMOUNT_CHANGED` | 지금 가격으로 계산한 결제 금액이 화면에서 본 금액과 다름 | |
 | 409 | `ORDER_PRODUCT_UNAVAILABLE` | 판매 중지되었거나 삭제된 상품이 있음 | |
-| 409 | `ORDER_OUT_OF_STOCK` | 재고가 모자란 상품이 있음 | R6 |
-| 409 | `ORDER_COUPON_UNAVAILABLE` | 고른 쿠폰을 쓸 수 없음 (이미 사용, 만료, 대상 아님, 최소 주문 금액 미달, 다른 회원의 쿠폰, 쿠폰 종류가 맞지 않음) | R7 |
+| 409 | `ORDER_OUT_OF_STOCK` | 재고가 모자란 상품이 있음 | 초과 판매 |
+| 409 | `ORDER_COUPON_UNAVAILABLE` | 고른 쿠폰을 쓸 수 없음 (이미 사용, 만료, 대상 아님, 최소 주문 금액 미달, 다른 회원의 쿠폰, 쿠폰 종류가 맞지 않음) | 쿠폰 이중 사용 |
 | 409 | `POINT_BELOW_MINIMUM_USE` | 쓸 포인트가 5,000 미만 (포인트 모듈이 냄) | |
 | 409 | `POINT_EXCEEDS_LIMIT` | 쓸 포인트가 쿠폰 할인 뒤 금액의 10%를 넘음 (포인트 모듈이 냄) | |
-| 409 | `POINT_INSUFFICIENT` | 포인트 잔액 부족 (포인트 모듈이 냄) | R11 |
+| 409 | `POINT_INSUFFICIENT` | 포인트 잔액 부족 (포인트 모듈이 냄) | 포인트 이중 사용 |
 | 409 | `ORDER_NOT_CANCELABLE` | 이미 취소되었거나 구매 확정된 주문 | |
 | 409 | `ORDER_NOT_CONFIRMABLE` | 이미 취소되었거나 구매 확정된 주문 | |
-| 503 | `ORDER_RETRY` | 일시적 DB 실패(데드락, 잠금 대기 시간 초과, 연결 오류 등). 다시 시도하면 성공할 수 있음 | R8 |
-| 500 | `COMMON_INTERNAL_ERROR` | 주문 합계와 상품별 합계가 다름 (버그) | R9 |
+| 503 | `ORDER_RETRY` | 일시적 DB 실패(데드락, 잠금 대기 시간 초과, 연결 오류 등). 다시 시도하면 성공할 수 있음 | 주문 데드락 |
+| 500 | `COMMON_INTERNAL_ERROR` | 주문 합계와 상품별 합계가 다름 (버그) | 금액 불일치 |
 
 ## 요청 검사
 
@@ -59,7 +59,7 @@
 
 ## POST /orders/preview
 
-주문서와 금액 미리 보기입니다. 고른 쿠폰과 포인트가 없으면 시나리오 1, 있으면 시나리오 2입니다.
+주문서와 금액 미리 보기입니다. 고른 쿠폰과 포인트가 없으면 주문서 보기, 있으면 금액 미리 보기입니다.
 아무것도 저장하지 않고, 재고와 쿠폰을 잡아 두지 않습니다. 고른 쿠폰이나 포인트를 쓸 수 없어도 409를 내지 않고, 이유를 응답에 담아 계산에서 뺍니다.
 
 #### 요청
@@ -216,12 +216,12 @@ Content-Type: application/json
 | 404 | `ORDER_PRODUCT_NOT_FOUND` | 없는 상품 ID | |
 | 409 | `ORDER_AMOUNT_CHANGED` | 결제 금액이 바뀜. 미리 보기를 다시 해야 함 | |
 | 409 | `ORDER_PRODUCT_UNAVAILABLE` | 판매 중지·삭제된 상품 | |
-| 409 | `ORDER_OUT_OF_STOCK` | 재고 부족 | R6 |
-| 409 | `ORDER_COUPON_UNAVAILABLE` | 고른 쿠폰을 쓸 수 없음 | R7 |
+| 409 | `ORDER_OUT_OF_STOCK` | 재고 부족 | 초과 판매 |
+| 409 | `ORDER_COUPON_UNAVAILABLE` | 고른 쿠폰을 쓸 수 없음 | 쿠폰 이중 사용 |
 | 409 | `POINT_BELOW_MINIMUM_USE` / `POINT_EXCEEDS_LIMIT` | 포인트 5,000 미만 또는 한도 초과 | |
-| 409 | `POINT_INSUFFICIENT` | 포인트 잔액 부족 | R11 |
-| 503 | `ORDER_RETRY` | 일시적 DB 실패(데드락, 잠금 대기 시간 초과, 연결 오류 등) | R8 |
-| 500 | `COMMON_INTERNAL_ERROR` | 금액 합계 불일치 (버그, 0건이 목표) | R9 |
+| 409 | `POINT_INSUFFICIENT` | 포인트 잔액 부족 | 포인트 이중 사용 |
+| 503 | `ORDER_RETRY` | 일시적 DB 실패(데드락, 잠금 대기 시간 초과, 연결 오류 등) | 주문 데드락 |
+| 500 | `COMMON_INTERNAL_ERROR` | 금액 합계 불일치 (버그, 0건이 목표) | 금액 불일치 |
 
 409와 503이면 아무것도 저장되지 않아서, 같은 키로 다시 보내면 새로 처리합니다.
 
@@ -322,7 +322,7 @@ Content-Type: application/json
 ```
 
 - `coupons[].orderItemId`가 `null`이면 주문 쿠폰입니다.
-- `earnedPointAmount`는 구매 확정으로 쌓인 포인트이고, 확정 전이면 `null`입니다. 3단계에서는 확정 직후 몇 초 동안 `null`일 수 있습니다.
+- `earnedPointAmount`는 구매 확정으로 쌓인 포인트이고, 확정 전이면 `null`입니다. 결제를 붙인 뒤에는 확정 직후 몇 초 동안 `null`일 수 있습니다.
 
 #### 에러
 
@@ -348,9 +348,9 @@ Content-Type: application/json
 
 ## POST /orders/{orderId}/confirm
 
-구매 확정이고 본문은 없습니다. 2단계는 같은 트랜잭션에서 결제 금액의 5%(원 미만 버림)를 포인트로 쌓습니다.
+구매 확정이고 본문은 없습니다. 결제를 붙이기 전에는 같은 트랜잭션에서 결제 금액의 5%(원 미만 버림)를 포인트로 쌓습니다.
 
-응답 200: [주문 상세](#get-ordersorderid)와 같은 본문입니다. `status`는 `CONFIRMED`이고 `confirmedAt`과 `earnedPointAmount`가 채워집니다. 3단계에서는 `earnedPointAmount`가 잠깐 `null`일 수 있습니다.
+응답 200: [주문 상세](#get-ordersorderid)와 같은 본문입니다. `status`는 `CONFIRMED`이고 `confirmedAt`과 `earnedPointAmount`가 채워집니다. 결제를 붙인 뒤에는 `earnedPointAmount`가 잠깐 `null`일 수 있습니다.
 
 #### 에러
 

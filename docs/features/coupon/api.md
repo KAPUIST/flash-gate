@@ -6,9 +6,9 @@
 
 | 메서드 | 경로 | 설명 | 인증 | 시나리오 |
 |---|---|---|---|---|
-| GET | `/coupons` | 행사 쿠폰 목록 | 필요 없음 | 1 |
-| POST | `/coupons/{couponId}/issue` | 쿠폰 발급받기 | 필요 | 2 |
-| GET | `/me/coupons` | 회원 쿠폰 목록 | 필요 | 3 |
+| GET | `/coupons` | 행사 쿠폰 목록 | 필요 없음 | [행사 쿠폰 목록 보기](README.md#시나리오-1-행사-쿠폰-목록-보기) |
+| POST | `/coupons/{couponId}/issue` | 쿠폰 발급받기 | 필요 | [쿠폰 발급받기](README.md#시나리오-2-쿠폰-발급받기) |
+| GET | `/me/coupons` | 회원 쿠폰 목록 | 필요 | [회원 쿠폰 목록 보기](README.md#시나리오-3-회원-쿠폰-목록-보기) |
 
 ## GET /coupons
 
@@ -51,7 +51,7 @@
 |---|---|
 | `remainingQuantity` | `max(0, 한정 수량 − Redis 발급 수)`. 대략적인 값이고, 발급 준비 전에는 한정 수량과 같습니다 |
 | `issueState` | 계산한 값. `UPCOMING`은 시작 전, `OPEN`은 받을 수 있음, `SOLD_OUT`은 남은 수량 0 |
-| `targets` | 상품 쿠폰이면 `{ "productIds": [..], "brandIds": [..] }`, 주문 쿠폰이면 `null` (2단계) |
+| `targets` | 상품 쿠폰이면 `{ "productIds": [..], "brandIds": [..] }`, 주문 쿠폰이면 `null` (주문을 만들 때) |
 | `maxDiscountAmount` | 정률이면 숫자, 정액이면 `null` |
 
 정렬은 발급 시작 시각이 빠른 순서이고, 목록 응답은 서버에서 1초 캐시합니다 (가정).
@@ -98,11 +98,11 @@
 | 2 | 409 | `COUPON_ISSUE_STOPPED` | 발급 중단된 쿠폰 | |
 | 3 | 409 | `COUPON_NOT_STARTED` | 발급 시작 전 | |
 | 4 | 409 | `COUPON_ISSUE_ENDED` | 발급 기간 끝남 | |
-| 5 | 409 | `COUPON_ALREADY_ISSUED` | 이미 받음 (Redis SADD 0, 또는 DB UNIQUE 위반) | R2 |
-| 6 | 409 | `COUPON_SOLD_OUT` | 한정 수량을 다 씀 | R1 |
-| 7 | 503 | `COUPON_RETRY` | Redis 오류 또는 저장 실패. 수량을 되돌렸으니 다시 시도 | R3 |
+| 5 | 409 | `COUPON_ALREADY_ISSUED` | 이미 받음 (Redis SADD 0, 또는 DB UNIQUE 위반) | 같은 회원 중복 요청 |
+| 6 | 409 | `COUPON_SOLD_OUT` | 한정 수량을 다 씀 | 초과 발급 |
+| 7 | 503 | `COUPON_RETRY` | Redis 오류 또는 저장 실패. 수량을 되돌렸으니 다시 시도 | 발급 수 불일치 |
 
-- 부하 테스트에서 `409`는 정상 응답으로 세고, `503`은 따로 셉니다. `500`은 0건이 목표입니다 (`R4`).
+- 부하 테스트에서 `409`는 정상 응답으로 세고, `503`은 따로 셉니다. `500`은 0건이 목표입니다 (발급 지연·에러).
 - `COUPON_ALREADY_ISSUED`와 `COUPON_SOLD_OUT`이 함께 해당되면 이미 받음이 먼저입니다. 이미 받은 회원에게는 소진을 알려줄 필요가 없기 때문입니다.
 
 ## GET /me/coupons
@@ -147,7 +147,7 @@
 | 필드 | 설명 |
 |---|---|
 | `state` | 계산한 값. `USABLE`은 사용 가능, `USED`는 사용함, `EXPIRED`는 만료. 저장된 `status`는 `ISSUED`, `USED` 두 가지뿐입니다 |
-| `usedAt` | 사용함이면 시각, 아니면 `null` (2단계) |
+| `usedAt` | 사용함이면 시각, 아니면 `null` (주문을 만들 때) |
 
 #### 에러
 

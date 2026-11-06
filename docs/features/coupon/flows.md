@@ -4,7 +4,7 @@ Risk가 있는 시나리오와 시스템 흐름을 그립니다. 시나리오 �
 
 ## 시나리오 2. 쿠폰 발급받기
 
-관련 Risk: `R1`, `R2`, `R3`, `R4`
+관련 Risk: 초과 발급, 같은 회원 중복 요청, 발급 수 불일치, 발급 지연·에러
 
 ### 확인 순서
 
@@ -95,14 +95,14 @@ sequenceDiagram
 
 | 실패 지점 | 처리 | 남는 어긋남 | Risk |
 |---|---|---|---|
-| SADD 실패 (Redis 연결 오류) | 아무것도 바뀌지 않음. 503 `COUPON_RETRY` | 없음 | R4 |
-| INCR 실패 | SREM으로 되돌림. 503 | 되돌리기도 실패하면 회원이 SET에 남아 "이미 받음"으로 막힘. Redis 복구로 해결 | R3 |
-| INSERT가 UNIQUE 위반 | DECR만 하고 409 `COUPON_ALREADY_ISSUED`. 회원은 SET에 그대로 둡니다 | 없음. Redis가 DB와 다시 맞춰집니다 | R2, R3 |
-| INSERT가 그 밖의 이유로 실패 (DB 오류, 타임아웃) | SREM + DECR로 되돌리고 503 | 타임아웃인데 실제로는 커밋됐으면, 회원 쿠폰은 있는데 Redis는 없음. 다음 요청이 UNIQUE 위반으로 위 줄처럼 맞춰집니다 | R3 |
-| 되돌리기(SREM, DECR) 자체가 실패 | 503을 응답하고 로그를 남깁니다 | Redis 발급 수가 실제보다 커서 덜 발급. Redis 복구로 해결 | R3 |
-| INCR 뒤, INSERT 전에 서버가 죽음 | 처리할 기회가 없음 | 덜 발급. Redis 복구로 해결 | R3 |
-| SADD 뒤, INCR 전에 서버가 죽음 | 처리할 기회가 없음 | 그 회원이 "이미 받음"으로 막힘. Redis 복구로 해결 | R3 |
-| Redis 재시작 | 없음 (아직) | 발급 수가 0부터 다시 시작해 초과 발급 | R5 |
+| SADD 실패 (Redis 연결 오류) | 아무것도 바뀌지 않음. 503 `COUPON_RETRY` | 없음 | 발급 지연·에러 |
+| INCR 실패 | SREM으로 되돌림. 503 | 되돌리기도 실패하면 회원이 SET에 남아 "이미 받음"으로 막힘. Redis 복구로 해결 | 발급 수 불일치 |
+| INSERT가 UNIQUE 위반 | DECR만 하고 409 `COUPON_ALREADY_ISSUED`. 회원은 SET에 그대로 둡니다 | 없음. Redis가 DB와 다시 맞춰집니다 | 같은 회원 중복 요청, 발급 수 불일치 |
+| INSERT가 그 밖의 이유로 실패 (DB 오류, 타임아웃) | SREM + DECR로 되돌리고 503 | 타임아웃인데 실제로는 커밋됐으면, 회원 쿠폰은 있는데 Redis는 없음. 다음 요청이 UNIQUE 위반으로 위 줄처럼 맞춰집니다 | 발급 수 불일치 |
+| 되돌리기(SREM, DECR) 자체가 실패 | 503을 응답하고 로그를 남깁니다 | Redis 발급 수가 실제보다 커서 덜 발급. Redis 복구로 해결 | 발급 수 불일치 |
+| INCR 뒤, INSERT 전에 서버가 죽음 | 처리할 기회가 없음 | 덜 발급. Redis 복구로 해결 | 발급 수 불일치 |
+| SADD 뒤, INCR 전에 서버가 죽음 | 처리할 기회가 없음 | 그 회원이 "이미 받음"으로 막힘. Redis 복구로 해결 | 발급 수 불일치 |
+| Redis 재시작 | 없음 (아직) | 발급 수가 0부터 다시 시작해 초과 발급 | Redis 재시작 |
 
 #### UNIQUE 위반일 때 회원을 SET에서 빼지 않는 이유
 
@@ -142,7 +142,7 @@ sequenceDiagram
 
 ## 시나리오 4. (시스템) 발급 준비와 Redis 복구
 
-관련 Risk: `R3`, `R5`
+관련 Risk: 발급 수 불일치, Redis 재시작
 
 ```mermaid
 sequenceDiagram
@@ -175,9 +175,9 @@ sequenceDiagram
 
 | 구현 | 방식 | 예상 | 역할 |
 |---|---|---|---|
-| `CountThenInsertIssuance` | `SELECT COUNT(*)`로 남은 수량을 확인하고, 잠금 없이 INSERT | 동시 요청이 같은 COUNT를 읽어 초과 발급 (`R1` 재현) | Before. 일부러 깨뜨린 구현 |
-| `PessimisticLockIssuance` | 트랜잭션 안에서 `SELECT ... FROM coupon WHERE id = ? FOR UPDATE`, COUNT, INSERT 순서로 실행 | 초과 발급은 0. 모든 요청이 쿠폰 행 잠금을 기다려 p99가 느림 (`R4` 비교 대상) | DB만으로 맞게 만든 기준선 |
-| `RedisFirstIssuance` | 이 문서의 시나리오 2 흐름 (SADD, INCR, INSERT 순서) | 초과 발급 0, 소진 요청이 DB에 가지 않음 | 채택한 구현 ([ADR-0001](../../adr/0001-redis-decides-coupon-issue.md)) |
+| `CountThenInsertIssuance` | `SELECT COUNT(*)`로 남은 수량을 확인하고, 잠금 없이 INSERT | 동시 요청이 같은 COUNT를 읽어 초과 발급 (초과 발급 재현) | Before. 일부러 깨뜨린 구현 |
+| `PessimisticLockIssuance` | 트랜잭션 안에서 `SELECT ... FROM coupon WHERE id = ? FOR UPDATE`, COUNT, INSERT 순서로 실행 | 초과 발급은 0. 모든 요청이 쿠폰 행 잠금을 기다려 p99가 느림 (발급 지연·에러 비교 대상) | DB만으로 맞게 만든 기준선 |
+| `RedisFirstIssuance` | 이 문서의 [쿠폰 발급받기](#시나리오-2-쿠폰-발급받기) 흐름 (SADD, INCR, INSERT 순서) | 초과 발급 0, 소진 요청이 DB에 가지 않음 | 채택한 구현 ([ADR-0001](../../adr/0001-redis-decides-coupon-issue.md)) |
 
 - `findOne`, 값 변경, `save()` 순서로 수량 컬럼을 깎는 고전적인 갱신 손실 구현은 쓰지 않습니다. 발급 수 컬럼(`issued_quantity`)을 두지 않기로 해서 깎을 컬럼이 없고, 같은 "읽고 나서 쓰기" 문제는 `CountThenInsertIssuance`로 재현합니다.
 - DB만 쓰는 조건부 UPDATE(`WHERE issued_quantity < total_quantity`)도 같은 이유로 비교 대상에서 뺐습니다. 카운터 컬럼 없이 DB만으로 맞게 하는 방법은 쿠폰 행 잠금입니다.

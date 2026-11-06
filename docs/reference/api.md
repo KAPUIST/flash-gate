@@ -18,7 +18,7 @@ Swagger(OpenAPI) 문서는 코드를 만들 때 추가합니다.
 | [장바구니](../features/cart/api.md) | `GET /me/cart`, `POST /me/cart/items`, `PATCH /me/cart/items/{cartItemId}`, `DELETE /me/cart/items` |
 | [주문](../features/order/api.md) | `POST /orders/preview`, `POST /orders`, `GET /me/orders`, `GET /orders/{orderId}`, `POST /orders/{orderId}/cancel`, `POST /orders/{orderId}/confirm` |
 | [포인트](../features/point/api.md) | `GET /me/point`, `GET /me/point/history` |
-| [결제](../features/payment/api.md) (3단계) | `POST /orders/{orderId}/payments` |
+| [결제](../features/payment/api.md) (결제를 붙일 때) | `POST /orders/{orderId}/payments` |
 
 ## 인증
 
@@ -76,7 +76,7 @@ Swagger(OpenAPI) 문서는 코드를 만들 때 추가합니다.
 |---|---|---|
 | 200 | 조회 성공, 상태 변경 성공 | |
 | 201 | 새 자원 생성 (쿠폰 발급, 주문 생성, 장바구니에 새 항목) | |
-| 202 | 요청은 받았고 결과는 나중에 확정됨 (3단계 결제 승인 결과를 모를 때, 초안) | |
+| 202 | 요청은 받았고 결과는 나중에 확정됨 (결제를 붙인 뒤 승인 결과를 모를 때, 초안) | |
 | 204 | 성공, 응답 본문 없음 (장바구니 빼기) | |
 | 400 | 요청 형식 오류 | `COMMON_INVALID_REQUEST` |
 | 401 | 토큰 없음, 잘못된 토큰, 만료 | `AUTH_UNAUTHORIZED` |

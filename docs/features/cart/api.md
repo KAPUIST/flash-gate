@@ -7,10 +7,10 @@
 
 | 메서드 | 경로 | 설명 | 시나리오 |
 |---|---|---|---|
-| POST | /me/cart/items | 장바구니에 담기 | 1 |
-| GET | /me/cart | 장바구니 보기 | 2 |
-| PATCH | /me/cart/items/{cartItemId} | 수량 바꾸기 | 3 |
-| DELETE | /me/cart/items | 하나 또는 여러 개 빼기 | 4 |
+| POST | /me/cart/items | 장바구니에 담기 | [장바구니에 담기](README.md#시나리오-1-장바구니에-담기) |
+| GET | /me/cart | 장바구니 보기 | [장바구니 보기](README.md#시나리오-2-장바구니-보기) |
+| PATCH | /me/cart/items/{cartItemId} | 수량 바꾸기 | [수량 바꾸기](README.md#시나리오-3-수량-바꾸기) |
+| DELETE | /me/cart/items | 하나 또는 여러 개 빼기 | [빼기](README.md#시나리오-4-빼기) |
 
 ## POST /me/cart/items
 

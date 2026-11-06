@@ -14,7 +14,7 @@ docs/
 
 1. [문제 정의](reference/problem.md): 무슨 상황을 가정하고, 어떤 숫자를 목표로 하는지
 2. [유저 플로우](reference/user-flows.md): 회원이 겪는 모든 흐름과 번호
-3. [쿠폰 기능](features/coupon/): 1단계 시나리오와 Risk
+3. [쿠폰 기능](features/coupon/): 처음 만드는 쿠폰 발급의 시나리오와 Risk
 4. [ERD](reference/erd.md): 전체 테이블과 정합성을 지키는 방법
 5. [ADR](adr/): 왜 Redis로 발급을 결정하는지, 왜 모듈러 모놀리스인지
 6. [README 결과 표](../README.md#2-결과): Risk별 Before, After 수치
@@ -23,7 +23,7 @@ docs/
 
 | 문서 | 내용 |
 |---|---|
-| [problem.md](reference/problem.md) | 상황, 단계, 가정 트래픽, 목표 수치, 범위 밖 |
+| [problem.md](reference/problem.md) | 상황, 만드는 순서, 가정 트래픽, 목표 수치, 범위 밖 |
 | [user-flows.md](reference/user-flows.md) | 전체 여정, 기능별 흐름 번호, 흐름 사이에 걸린 규칙 |
 | [erd.md](reference/erd.md) | 전체 ERD, 제약 조건, 인덱스, 반정규화, 상태 값, 삭제 정책, 집계 규칙 |
 | [api.md](reference/api.md) | 경로, 인증, 멱등성, 페이지, 에러 형식, HTTP 상태 코드 |
@@ -33,15 +33,15 @@ docs/
 
 ## features: 기능별
 
-| 기능 | 단계 | 코드 | 문서 | 상태 |
+| 기능 | 만드는 순서 | 코드 | 문서 | 상태 |
 |---|---|---|---|---|
-| 인증 | 1 | `src/auth/` | [README](features/auth/) · [Flow](features/auth/flows.md) · [API](features/auth/api.md) | 설계 완료 |
-| 쿠폰 | 1 | `src/coupon/` | [README](features/coupon/) · [Flow](features/coupon/flows.md) · [API](features/coupon/api.md) | 설계 완료 |
-| 상품 | 2 | `src/product/` | [README](features/product/) · [Flow](features/product/flows.md) · [API](features/product/api.md) | 설계 완료 |
-| 장바구니 | 2 | `src/cart/` | [README](features/cart/) · [Flow](features/cart/flows.md) · [API](features/cart/api.md) | 설계 완료 |
-| 주문 | 2 | `src/order/` | [README](features/order/) · [Flow](features/order/flows.md) · [API](features/order/api.md) | 설계 완료 |
-| 포인트 | 2, 3 | `src/point/` | [README](features/point/) · [Flow](features/point/flows.md) · [API](features/point/api.md) | 설계 완료 |
-| 결제 | 3 | `src/payment/` | [README](features/payment/) · [Flow](features/payment/flows.md) · [API](features/payment/api.md) | 설계 초안 |
+| 인증 | 쿠폰 발급 | `src/auth/` | [README](features/auth/) · [Flow](features/auth/flows.md) · [API](features/auth/api.md) | 설계 완료 |
+| 쿠폰 | 쿠폰 발급 | `src/coupon/` | [README](features/coupon/) · [Flow](features/coupon/flows.md) · [API](features/coupon/api.md) | 설계 완료 |
+| 상품 | 주문 | `src/product/` | [README](features/product/) · [Flow](features/product/flows.md) · [API](features/product/api.md) | 설계 완료 |
+| 장바구니 | 주문 | `src/cart/` | [README](features/cart/) · [Flow](features/cart/flows.md) · [API](features/cart/api.md) | 설계 완료 |
+| 주문 | 주문 | `src/order/` | [README](features/order/) · [Flow](features/order/flows.md) · [API](features/order/api.md) | 설계 완료 |
+| 포인트 | 주문, 결제 | `src/point/` | [README](features/point/) · [Flow](features/point/flows.md) · [API](features/point/api.md) | 설계 완료 |
+| 결제 | 결제 | `src/payment/` | [README](features/payment/) · [Flow](features/payment/flows.md) · [API](features/payment/api.md) | 설계 초안 |
 
 각 기능 폴더에는 아래 세 문서가 있습니다.
 

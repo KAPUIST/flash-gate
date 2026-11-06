@@ -21,7 +21,7 @@ sequenceDiagram
     participant A as API
     participant D as PostgreSQL
 
-    alt 목록 (시나리오 2)
+    alt 목록 (상품 목록 보기)
         U->>A: GET /products?brandId&cursor&size
         alt 형식 오류
             A-->>U: 400 COMMON_INVALID_REQUEST
@@ -30,7 +30,7 @@ sequenceDiagram
         D-->>A: 상품, 브랜드, 재고
         A->>A: 상품마다 판매 상태 계산
         A-->>U: 200 items, nextCursor
-    else 상세 (시나리오 3)
+    else 상세 (상품 상세 보기)
         U->>A: GET /products/{productId}
         A->>D: 삭제되지 않은 상품 하나 조회
         alt 없음 또는 삭제됨
@@ -81,7 +81,7 @@ flowchart TD
 
 ## 재고 차감과 복구 (다른 모듈이 부름)
 
-관련 Risk: `R6`, `R8` (주문 기능이 소유)
+관련 Risk: 초과 판매, 주문 데드락 (주문 기능이 소유)
 
 주문 트랜잭션 안에서 주문 모듈이 부릅니다. 상품 모듈은 트랜잭션을 열지 않고, 부른 쪽의 트랜잭션에 참여합니다.
 
@@ -103,7 +103,7 @@ sequenceDiagram
         end
     end
 
-    Note over O,D: 취소 트랜잭션 (주문 취소, 3단계 결제 실패)
+    Note over O,D: 취소 트랜잭션 (주문 취소, 결제를 붙인 뒤 결제 실패)
     loop 상품 ID 오름차순
         O->>P: increaseStock(productId, n)
         P->>D: UPDATE product_stock SET quantity = quantity + n WHERE product_id = ?

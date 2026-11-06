@@ -4,7 +4,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 단계 | 2단계 ([문제 정의](../../reference/problem.md#만드는-순서)) |
+| 만드는 순서 | 주문 ([문제 정의](../../reference/problem.md#만드는-순서)) |
 | 코드 | `src/product/` (아직 없음) |
 | 상태 | 설계 완료, 구현 전 |
 | 관련 테이블 | `brand` ([ERD](../../reference/erd.md#brand-브랜드)), `product` ([ERD](../../reference/erd.md#product-상품)), `product_stock` ([ERD](../../reference/erd.md#product_stock-재고)) |
@@ -14,7 +14,7 @@
 이 기능 자체의 시나리오(조회)에는 Risk가 없습니다.
 
 - 회원이 쓰는 API는 조회뿐이라서, 동시에 요청해도 깨질 상태가 없습니다.
-- 상품 모듈은 `product_stock`을 소유합니다. 재고를 줄이고 늘리는 일은 상품 모듈이 하고, 주문 모듈이 [공개 서비스](#공개-서비스-다른-모듈이-부르는-것)로 부릅니다. 재고 초과 판매(`R6`)와 데드락(`R8`)은 주문 시나리오에서 일어나서 [주문](../order/)이 소유합니다.
+- 상품 모듈은 `product_stock`을 소유합니다. 재고를 줄이고 늘리는 일은 상품 모듈이 하고, 주문 모듈이 [공개 서비스](#공개-서비스-다른-모듈이-부르는-것)로 부릅니다. 재고 초과 판매와 주문 데드락은 주문 시나리오에서 일어나서 [주문](../order/)이 소유합니다.
 
 상품 등록, 판매 중지, 상품 삭제는 관리자 기능이라 [범위 밖](../../reference/problem.md#범위-밖)입니다. 데이터는 시드로 넣습니다.
 
@@ -70,9 +70,9 @@
 
 #### 허용하는 지연·불일치
 
-시나리오 2, 3에 공통으로 적용합니다.
+상품 목록 보기와 상품 상세 보기에 공통으로 적용합니다.
 
-- 판매 상태는 조회한 순간의 값이라서, 목록에서 판매 중이었던 상품이 주문하는 순간 품절일 수 있습니다. 품절은 주문할 때 다시 확인합니다 ([주문 시나리오 3](../order/)).
+- 판매 상태는 조회한 순간의 값이라서, 목록에서 판매 중이었던 상품이 주문하는 순간 품절일 수 있습니다. 품절은 주문할 때 다시 확인합니다 ([주문하기 시나리오](../order/)).
 - 가격도 조회한 순간의 값이고, 주문할 때의 가격을 주문 상품에 복사합니다.
 
 ---
@@ -86,12 +86,12 @@
 |---|---|---|---|---|
 | `getForOrder(productIds)` | 주문 (주문서, 주문하기) | 상품 ID 목록 | 지금 이름, 가격, `status`, 브랜드 ID, 재고, 판매 상태. 삭제된 상품도 돌려주고 삭제 여부를 표시합니다 | 없는 ID는 결과에서 빠짐 |
 | `assertOrderable(productIds)` | 주문 (주문하기, 트랜잭션 안) | 상품 ID 목록 | 모두 `ON_SALE`이고 삭제되지 않았는지 확인합니다. 재고는 보지 않습니다 (차감에서 확인) | 하나라도 아니면 판매하지 않는 상품 에러 |
-| `decreaseStock(productId, quantity)` | 주문 (주문하기) | 상품 ID, 수량 | `UPDATE product_stock SET quantity = quantity - :n WHERE product_id = :id AND quantity >= :n` | 바뀐 행이 0개면 품절 에러 (`R6`) |
-| `increaseStock(productId, quantity)` | 주문 (취소, 3단계 결제 실패) | 상품 ID, 수량 | `UPDATE product_stock SET quantity = quantity + :n WHERE product_id = :id` | 없음 |
+| `decreaseStock(productId, quantity)` | 주문 (주문하기) | 상품 ID, 수량 | `UPDATE product_stock SET quantity = quantity - :n WHERE product_id = :id AND quantity >= :n` | 바뀐 행이 0개면 품절 에러 (초과 판매) |
+| `increaseStock(productId, quantity)` | 주문 (취소, 결제를 붙인 뒤 결제 실패) | 상품 ID, 수량 | `UPDATE product_stock SET quantity = quantity + :n WHERE product_id = :id` | 없음 |
 | `lockForCart(productId)` | 장바구니 (담기, 트랜잭션 안) | 상품 ID | 삭제되지 않은 상품 행을 `FOR SHARE`로 잠그고 `status`를 돌려줍니다. 담는 동안 상품 삭제가 끼어들지 못합니다 | 없거나 삭제됐으면 상품 없음 에러 |
 | `getForCart(productIds)` | 장바구니 (보기) | 상품 ID 목록 | 삭제되지 않은 상품의 지금 이름, 가격, 판매 상태 | 삭제된 상품은 빠짐 |
 
-- 여러 상품의 재고를 바꿀 때는 부르는 쪽이 상품 ID 오름차순으로 부릅니다. 순서가 다르면 데드락이 생깁니다 (`R8`). 상품 모듈은 한 번에 한 행만 바꿉니다.
+- 여러 상품의 재고를 바꿀 때는 부르는 쪽이 상품 ID 오름차순으로 부릅니다. 순서가 다르면 데드락이 생깁니다 (주문 데드락). 상품 모듈은 한 번에 한 행만 바꿉니다.
 - 판매 상태 계산(`ON_SALE`, `SOLD_OUT`, `STOPPED`)은 `src/product/domain/`의 순수 함수 하나에 있고, 위 메서드들이 모두 이 함수를 씁니다 ([판매 상태 계산](flows.md#판매-상태-계산)).
 
 ## 관련 결정과 실험

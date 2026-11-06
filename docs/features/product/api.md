@@ -6,9 +6,9 @@
 
 | 메서드 | 경로 | 설명 | 로그인 필요 | 시나리오 |
 |---|---|---|---|---|
-| GET | /brands | 브랜드 목록 | 아니오 | 1 |
-| GET | /products | 상품 목록 | 아니오 | 2 |
-| GET | /products/{productId} | 상품 상세 | 아니오 | 3 |
+| GET | /brands | 브랜드 목록 | 아니오 | [브랜드 목록 보기](README.md#시나리오-1-브랜드-목록-보기) |
+| GET | /products | 상품 목록 | 아니오 | [상품 목록 보기](README.md#시나리오-2-상품-목록-보기) |
+| GET | /products/{productId} | 상품 상세 | 아니오 | [상품 상세 보기](README.md#시나리오-3-상품-상세-보기) |
 
 ## GET /brands
 

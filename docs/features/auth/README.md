@@ -4,7 +4,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 단계 | 1단계 ([문제 정의](../../reference/problem.md#만드는-순서)) |
+| 만드는 순서 | 쿠폰 발급 ([문제 정의](../../reference/problem.md#만드는-순서)) |
 | 코드 | `src/auth/` (아직 없음) |
 | 상태 | 설계 완료, 구현 전 |
 | 관련 테이블 | `member` ([ERD](../../reference/erd.md#member-회원)) |
