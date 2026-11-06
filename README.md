@@ -9,7 +9,6 @@
 - **진행**: 1단계 로그인·쿠폰 발급 → 2단계 상품·장바구니·주문·포인트 사용 → 3단계 Mock 결제·포인트 비동기 적립
 - **지금**: 3단계까지 설계 문서 작성 완료, 구현 전
 - 자세한 내용: [문제 정의](docs/reference/problem.md), [유저 플로우](docs/reference/user-flows.md)
-- 참고한 프로젝트: [f-lab-edu/cyber-monday](https://github.com/f-lab-edu/cyber-monday)
 
 ## 2. 핵심 결과
 
