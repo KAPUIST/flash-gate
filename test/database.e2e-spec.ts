@@ -34,4 +34,14 @@ describe('PostgreSQL 연결 (e2e)', () => {
     expect(name).toBe(process.env.POSTGRES_TEST_DB);
     expect(name).not.toBe('flashgate');
   });
+
+  it('bigint 값을 문자열이 아니라 number로 받는다', async () => {
+    const [{ id, total }]: { id: unknown; total: unknown }[] =
+      await dataSource.query(
+        'SELECT 9007199254740991::int8 AS id, count(*) AS total FROM (VALUES (1), (2)) AS t(x)',
+      );
+
+    expect(id).toBe(Number.MAX_SAFE_INTEGER);
+    expect(total).toBe(2);
+  });
 });
