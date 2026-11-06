@@ -1,12 +1,12 @@
 # 주문: Flow
 
 시나리오의 처리 순서, SQL, 트랜잭션 경계를 그립니다. 시나리오의 문장은 [README](README.md)에 있습니다.
-다른 모듈(상품, 쿠폰, 포인트, 장바구니)은 그 모듈이 공개한 서비스를 함수로 부릅니다. HTTP가 아닙니다.
+다른 모듈(상품, 쿠폰, 포인트, 장바구니)은 HTTP가 아니라 그 모듈이 공개한 서비스를 함수로 부릅니다.
 트랜잭션은 `@nestjs-cls/transactional`로 열고, 다른 모듈 서비스도 같은 트랜잭션에 참여합니다 ([개발 규칙](../../reference/conventions.md#트랜잭션)).
 
 ## 시나리오 1, 2. 주문서 보기와 금액 미리 보기
 
-`POST /orders/preview` 하나가 두 시나리오를 처리합니다. 고른 쿠폰과 포인트가 없으면 시나리오 1, 있으면 시나리오 2입니다. 아무것도 저장하지 않고, 잠그지도 않습니다.
+`POST /orders/preview` 하나가 두 시나리오를 처리합니다. 고른 쿠폰과 포인트가 없으면 주문서 보기, 있으면 금액 미리 보기입니다. 아무것도 저장하지 않고, 잠그지도 않습니다.
 
 ```mermaid
 sequenceDiagram
@@ -34,13 +34,13 @@ sequenceDiagram
     PT-->>O: 잔액
     Note over O,PT: 쓸 수 있는 최대 포인트는 쿠폰 계산 뒤<br/>calculateUsableAmount(memberId, amountAfterCoupons)로 받는다
     O->>D: 상품별 쓸 수 있는 쿠폰 거르기, 금액 계산
-    Note over D: 상품 쿠폰 → 주문 쿠폰 → 포인트<br/>상품별로 나누기, 합계 검사 (R9)
+    Note over D: 상품 쿠폰 → 주문 쿠폰 → 포인트<br/>상품별로 나누기, 합계 검사 (금액 불일치)
     D-->>O: 금액, 쿠폰별 사용 가능 여부와 이유
     O-->>U: 200 주문서
 ```
 
-- 재고가 0이면 상품을 "품절"로 표시합니다. 주문서는 막지 않습니다. 주문하기에서 실제로 막습니다.
-- 고른 쿠폰을 쓸 수 없으면 그 쿠폰을 계산에서 빼고 이유를 함께 응답합니다. 미리 보기는 409를 내지 않습니다.
+- 재고가 0이면 상품을 "품절"로 표시하지만 주문서는 막지 않고, 주문하기에서 실제로 막습니다.
+- 고른 쿠폰을 쓸 수 없으면 미리 보기는 409를 내지 않고, 그 쿠폰을 계산에서 빼고 이유를 함께 응답합니다.
 
 ### 금액 계산
 
@@ -66,7 +66,7 @@ flowchart TD
     pt -- "예" --> ptApply["포인트 적용"]
     pt -- "아니오" --> ptReject["미리 보기: 안내 표시<br/>주문하기: 409"]
     ptApply --> split["주문 쿠폰 할인과 포인트를<br/>상품 쿠폰 적용 후 금액 비율로 나눔<br/>원 미만 버림, 남은 원은 가장 큰 줄에"]
-    split --> check["주문 합계 = 상품별 합계 검사 (R9)"]
+    split --> check["주문 합계 = 상품별 합계 검사 (금액 불일치)"]
     check --> pay["결제 금액 = 상품 금액 − 할인 − 포인트"]
 ```
 
@@ -85,10 +85,10 @@ sequenceDiagram
 
     U->>O: POST /orders (Idempotency-Key, 상품, 쿠폰, 포인트, expectedPaymentAmount)
     O->>DB: SELECT id FROM orders WHERE member_id = ? AND idempotency_key = ?
-    alt 이미 있음 (시나리오 4)
+    alt 이미 있음 (같은 주문을 두 번 보냄)
         O-->>U: 200 처음 주문 (Idempotent-Replayed: true)
     end
-    O->>D: 지금 가격으로 다시 계산 (시나리오 2와 같은 클래스)
+    O->>D: 지금 가격으로 다시 계산 (금액 미리 보기와 같은 클래스)
     alt 결제 금액이 expectedPaymentAmount와 다름
         O-->>U: 409 ORDER_AMOUNT_CHANGED
     end
@@ -98,10 +98,10 @@ sequenceDiagram
         O->>DB: ROLLBACK
         O-->>U: 409 ORDER_PRODUCT_UNAVAILABLE
     end
-    loop 상품 ID 오름차순 (R8)
+    loop 상품 ID 오름차순 (주문 데드락)
         O->>P: decreaseStock(productId, n)
         P->>DB: UPDATE product_stock SET quantity = quantity - n WHERE product_id = ? AND quantity >= n
-        alt 바뀐 행 0개 (R6)
+        alt 바뀐 행 0개 (초과 판매)
             O->>DB: ROLLBACK
             O-->>U: 409 ORDER_OUT_OF_STOCK
         end
@@ -109,7 +109,7 @@ sequenceDiagram
     loop 회원 쿠폰 ID 오름차순
         O->>CP: useCoupon(memberId, memberCouponId)
         CP->>DB: UPDATE member_coupon SET status = 'USED', used_at = now() WHERE id = ? AND member_id = ? AND status = 'ISSUED'
-        alt 바뀐 행 0개 (R7)
+        alt 바뀐 행 0개 (쿠폰 이중 사용)
             O->>DB: ROLLBACK
             O-->>U: 409 ORDER_COUPON_UNAVAILABLE
         end
@@ -124,7 +124,7 @@ sequenceDiagram
         O->>PT: use(memberId, orderId, x, amountAfterCoupons)
         Note over PT: PointPolicy가 5,000 이상, 10% 한도 검사
         PT->>DB: UPDATE member_point SET balance = balance - x WHERE member_id = ? AND balance >= x
-        alt 규칙 위반 또는 바뀐 행 0개 (R11)
+        alt 규칙 위반 또는 바뀐 행 0개 (포인트 이중 사용)
             O->>DB: ROLLBACK
             O-->>U: 409 POINT_BELOW_MINIMUM_USE / POINT_EXCEEDS_LIMIT / POINT_INSUFFICIENT
         end
@@ -138,12 +138,12 @@ sequenceDiagram
     O-->>U: 201 주문 (status = ORDERED)
 ```
 
-- 사용 기한, 쿠폰 대상, 최소 주문 금액은 트랜잭션을 열기 전에 주문 도메인 클래스가 확인합니다. 포인트 규칙(5,000 이상, 10% 한도)은 트랜잭션 안에서 포인트 모듈 `use()`의 `PointPolicy`가 확인합니다. 트랜잭션 안의 조건부 UPDATE는 동시에 바뀌는 값(재고, 쿠폰 상태, 잔액)을 지킵니다.
-- 포인트 사용 내역은 주문 ID가 있어야 해서 주문을 INSERT한 뒤에 남깁니다. 잔액 차감과 내역은 같은 트랜잭션입니다.
-- 잠그는 순서는 재고(상품 ID 오름차순) → 회원 쿠폰(ID 오름차순) → 주문 저장 → 포인트 잔액입니다. 모든 주문과 취소가 이 순서를 지켜서 서로 엇갈려 잠그지 않습니다.
-- 그래도 PostgreSQL이 데드락을 감지하면(`40P01`) 트랜잭션이 취소됩니다. 이때 `503 ORDER_RETRY`를 응답합니다. 순서를 지키면 0건이어야 하고, 실험에서 0건인지 셉니다.
+- 사용 기한, 쿠폰 대상, 최소 주문 금액은 트랜잭션을 열기 전에 주문 도메인 클래스가 확인합니다. 포인트 규칙(5,000 이상, 10% 한도)은 트랜잭션 안에서 포인트 모듈 `use()`의 `PointPolicy`가 확인합니다. 동시에 바뀌는 값(재고, 쿠폰 상태, 잔액)은 트랜잭션 안의 조건부 UPDATE가 지킵니다.
+- 포인트 사용 내역은 주문 ID가 있어야 해서 주문을 INSERT한 뒤에 남기고, 잔액 차감과 같은 트랜잭션에서 처리합니다.
+- 재고, 회원 쿠폰, 주문 저장, 포인트 잔액 순서로 잠급니다. 재고는 상품 ID 오름차순, 회원 쿠폰은 ID 오름차순입니다. 모든 주문과 취소가 이 순서를 지켜서 서로 엇갈려 잠그지 않습니다.
+- 그래도 PostgreSQL이 데드락을 감지하면(`40P01`) 트랜잭션이 취소되고 `503 ORDER_RETRY`를 응답합니다. 순서를 지키면 0건이어야 하고, 실험에서 0건인지 셉니다.
 
-### 데드락: 순서를 지키지 않을 때와 지킬 때 (R8)
+### 데드락: 순서를 지키지 않을 때와 지킬 때
 
 ```mermaid
 sequenceDiagram
@@ -168,7 +168,7 @@ sequenceDiagram
     T2->>SB: UPDATE B (잠금 획득)
 ```
 
-## 시나리오 4. 같은 주문을 두 번 보냄 (R10)
+## 시나리오 4. 같은 주문을 두 번 보냄
 
 ```mermaid
 sequenceDiagram
@@ -189,9 +189,9 @@ sequenceDiagram
     Note over Q2: 200, 요청 1과 같은 본문
 ```
 
-- 트랜잭션 전의 SELECT는 빠른 길입니다. 이미 끝난 요청이면 아무것도 잠그지 않고 바로 응답합니다.
-- 동시에 온 요청은 UNIQUE 제약이 최종으로 막습니다. 두 번째 요청은 첫 요청이 커밋하거나 롤백할 때까지 기다립니다. 첫 요청이 롤백되면 두 번째 INSERT가 성공합니다.
-- 요청 1이 품절 등으로 실패하면 아무것도 저장되지 않습니다. 같은 키로 다시 보내면 새로 처리합니다.
+- 트랜잭션 전의 SELECT는 빠른 길이라서, 이미 끝난 요청이면 아무것도 잠그지 않고 바로 응답합니다.
+- 동시에 온 요청은 UNIQUE 제약이 최종으로 막습니다. 두 번째 요청은 첫 요청이 커밋하거나 롤백할 때까지 기다리고, 첫 요청이 롤백되면 두 번째 INSERT가 성공합니다.
+- 요청 1이 품절 등으로 실패하면 아무것도 저장되지 않아서, 같은 키로 다시 보내면 새로 처리합니다.
 
 ## 시나리오 5. 내 주문 목록·상세 보기
 
@@ -213,7 +213,7 @@ sequenceDiagram
     O-->>U: 200 주문 상세 (주문 시점 이름·가격)
 ```
 
-- 주문 내역은 `order_item`에 복사한 이름과 가격만 읽습니다. `product`와 JOIN하지 않습니다. 삭제된 상품 때문에 내역이 사라지지 않습니다.
+- 주문 내역은 `product`와 JOIN하지 않고 `order_item`에 복사한 이름과 가격만 읽어서, 삭제된 상품 때문에 내역이 사라지지 않습니다.
 - 쓴 쿠폰의 이름은 쿠폰 모듈의 공개 서비스로 읽습니다. 발급이 시작된 쿠폰은 삭제되지 않으므로 이름이 사라지지 않습니다.
 
 ## 시나리오 6. 주문 취소
@@ -257,7 +257,7 @@ sequenceDiagram
     O-->>U: 200 주문 (status = CANCELED)
 ```
 
-- 주문 행을 먼저 바꿉니다. 동시에 온 두 번째 취소와 구매 확정은 이 행에서 기다렸다가 상태 조건에 걸려 0행이 됩니다.
+- 주문 행을 먼저 바꿔서, 동시에 온 두 번째 취소와 구매 확정은 이 행에서 기다렸다가 상태 조건에 걸려 0행이 됩니다.
 - 재고와 쿠폰은 주문하기와 같은 순서로 잠급니다.
 - `point_history`의 `UNIQUE(order_id, type)` 덕분에 사용 취소 내역은 주문마다 한 번만 생깁니다.
 
@@ -288,7 +288,7 @@ sequenceDiagram
     O-->>U: 200 주문 (status = CONFIRMED)
 ```
 
-- 2단계 흐름입니다. 3단계는 적립을 같은 트랜잭션에서 하지 않고, 확정 트랜잭션에서 "적립할 일"을 남긴 뒤 워커가 비동기로 처리합니다 ([포인트 Flow](../point/flows.md)).
+- 결제를 붙이기 전의 흐름입니다. 결제를 붙인 뒤에는 적립을 같은 트랜잭션에서 하지 않고, 확정 트랜잭션에서 "적립할 일"을 남긴 뒤 워커가 비동기로 처리합니다 ([포인트 Flow](../point/flows.md)).
 
 ## 시나리오 8. (시스템) 자동 구매 확정
 
@@ -301,7 +301,7 @@ sequenceDiagram
     loop 1시간마다 (가정)
         B->>DB: SELECT id FROM orders WHERE status = 'ORDERED' AND ordered_at < now() - interval '7 days' AND id > 마지막 ID ORDER BY id LIMIT 100
         loop 주문마다
-            B->>O: confirm(orderId) (시나리오 7과 같은 서비스, 회원 조건 없이)
+            B->>O: confirm(orderId) (구매 확정과 같은 서비스, 회원 조건 없이)
             alt 바뀐 행 0개 (그 사이 취소·확정됨)
                 O-->>B: 건너뜀
             else 실패
@@ -313,7 +313,7 @@ sequenceDiagram
     end
 ```
 
-- 주문마다 트랜잭션을 따로 엽니다. 한 주문의 실패가 다른 주문을 되돌리지 않습니다.
+- 주문마다 트랜잭션을 따로 열어서, 한 주문의 실패가 다른 주문을 되돌리지 않습니다.
 - 배치를 여러 인스턴스에서 동시에 돌려도 상태 조건 덕분에 같은 주문을 두 번 확정하지 않습니다. 적립도 `UNIQUE(order_id, type)`가 한 번만 허용합니다.
 
 ## 실패 시 처리
@@ -329,7 +329,7 @@ sequenceDiagram
 | 포인트 잔액 부족 | 포인트 조건부 UPDATE | 롤백 | 409 `POINT_INSUFFICIENT` |
 | 같은 멱등 키가 먼저 커밋됨 | 주문 INSERT | 롤백 후 처음 주문 조회 | 200 처음 주문 |
 | 데드락 감지, 잠금 대기 시간 초과 | 어디서나 | 롤백 | 503 `ORDER_RETRY` |
-| 주문 합계 ≠ 상품별 합계 | 도메인 클래스 | 저장하지 않음. 버그이므로 로그를 남김 | 500 `COMMON_INTERNAL_ERROR` (`R9`, 0건이 목표) |
+| 주문 합계 ≠ 상품별 합계 | 도메인 클래스 | 저장하지 않음. 버그이므로 로그를 남김 | 500 `COMMON_INTERNAL_ERROR` (금액 불일치, 0건이 목표) |
 | 취소·확정할 수 없는 상태 | 주문 조건부 UPDATE | 롤백 | 409 `ORDER_NOT_CANCELABLE` / `ORDER_NOT_CONFIRMABLE` |
 
 모든 쓰기가 한 트랜잭션이라 중간 실패가 남지 않습니다. Redis를 쓰지 않으므로 [쿠폰 발급](../coupon/flows.md)과 달리 보상 작업이 없습니다.
@@ -340,14 +340,14 @@ Risk마다 먼저 깨지는 구현으로 문제를 재현하고, 위 흐름으�
 
 | Risk | 깨지는 구현 (Before) | 고친 구현 (After) | 재는 것 |
 |---|---|---|---|
-| R6 | 재고를 `findOne`으로 읽고 `quantity -= n` 후 `save()`. 두 주문이 같은 값을 읽고 덮어써서 갱신 손실 | 조건부 UPDATE `WHERE quantity >= n` | 처음 재고 1,000개에 1,000 RPS로 30초. 판매 수량 합 − 처음 재고 (초과 판매 수) |
-| R7 | 회원 쿠폰을 읽어 `ISSUED`인지 확인한 뒤 `save()`로 `USED` 저장. 두 주문이 모두 `ISSUED`를 읽음 | 조건부 UPDATE `WHERE status = 'ISSUED'` | 같은 회원·같은 쿠폰으로 주문 10개를 동시에. 쓰인 횟수 |
-| R8 | 요청에 담긴 순서대로 `SELECT ... FOR UPDATE`로 재고를 잠금 | 상품 ID 오름차순으로 조건부 UPDATE | 상품 A·B를 반대 순서로 담은 주문을 섞어 부하. 데드락 수, 5xx 수 |
-| R9 | 상품별로 나눌 때 각자 반올림하고 남은 원을 처리하지 않음 | 버림 후 남은 원을 가장 큰 줄에 더하고 합계를 검사 | 무작위 금액 조합 10만 건 속성 테스트. 합계가 다른 주문 수 |
-| R10 | 멱등 키 없이 주문 | `UNIQUE(member_id, idempotency_key)` | 같은 요청을 동시에 2~5번. 생긴 주문 수 |
+| 초과 판매 | 재고를 `findOne`으로 읽고 `quantity -= n` 후 `save()`. 두 주문이 같은 값을 읽고 덮어써서 갱신 손실 | 조건부 UPDATE `WHERE quantity >= n` | 처음 재고 1,000개에 1,000 RPS로 30초. 판매 수량 합 − 처음 재고 (초과 판매 수) |
+| 쿠폰 이중 사용 | 회원 쿠폰을 읽어 `ISSUED`인지 확인한 뒤 `save()`로 `USED` 저장. 두 주문이 모두 `ISSUED`를 읽음 | 조건부 UPDATE `WHERE status = 'ISSUED'` | 같은 회원·같은 쿠폰으로 주문 10개를 동시에. 쓰인 횟수 |
+| 주문 데드락 | 요청에 담긴 순서대로 `SELECT ... FOR UPDATE`로 재고를 잠금 | 상품 ID 오름차순으로 조건부 UPDATE | 상품 A·B를 반대 순서로 담은 주문을 섞어 부하. 데드락 수, 5xx 수 |
+| 금액 불일치 | 상품별로 나눌 때 각자 반올림하고 남은 원을 처리하지 않음 | 버림 후 남은 원을 가장 큰 줄에 더하고 합계를 검사 | 무작위 금액 조합 10만 건 속성 테스트. 합계가 다른 주문 수 |
+| 중복 주문 | 멱등 키 없이 주문 | `UNIQUE(member_id, idempotency_key)` | 같은 요청을 동시에 2~5번. 생긴 주문 수 |
 
-이 실험들은 아직 하지 않았습니다. 수치는 측정한 뒤에 씁니다.
+이 실험들은 아직 하지 않았고, 수치는 측정한 뒤에 씁니다.
 
 ---
 
-[← 이전: 주문](README.md) | [문서 지도](../../README.md) | [다음: API →](api.md)
+[이전: 주문](README.md) | [문서 지도](../../README.md) | [다음: API](api.md)
