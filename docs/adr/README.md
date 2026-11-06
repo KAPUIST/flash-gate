@@ -5,7 +5,8 @@
 | 번호 | 결정 | 상태 | 관련 Risk |
 |---|---|---|---|
 | [0001](0001-redis-decides-coupon-issue.md) | 쿠폰 발급은 Redis가 결정하고, DB는 기록만 한다 | 채택 | 초과 발급, 발급 수 불일치, 발급 지연·에러, Redis 재시작 |
-| [0002](0002-modular-monolith-with-one-port.md) | 모듈러 모놀리스로 만들고, 포트는 발급 전략 하나만 둔다 | 채택 | |
+| [0002](0002-modular-monolith-with-one-port.md) | 모듈러 모놀리스로 만들고, 포트는 발급 전략 하나만 둔다 | 채택. 포트 수는 0003이 고침 | |
+| [0003](0003-module-reactions-through-events.md) | 모듈 사이 반응은 이벤트로 하고, 전달 방식은 프로세스 안에서 outbox, Kafka 순으로 키운다 | 채택 | 포인트 적립 누락, 포인트 이중 적립 |
 
 ---
 

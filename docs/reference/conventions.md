@@ -97,7 +97,7 @@ npm run build      # 빌드
 
 ## 아키텍처
 
-모듈러 모놀리스입니다. 포트는 구현을 둘 이상 비교하는 곳에만 둡니다 ([ADR-0002](../adr/0002-modular-monolith-with-one-port.md)).
+모듈러 모놀리스입니다. 포트는 구현을 둘 이상 비교하는 곳에만 두고, 지금은 발급 전략과 이벤트 발행 두 개입니다 ([ADR-0002](../adr/0002-modular-monolith-with-one-port.md), [ADR-0003](../adr/0003-module-reactions-through-events.md)).
 
 ```
 src/
@@ -118,8 +118,17 @@ src/
     infra/
       issuance/                    # 포트 구현
       persistence/                 # TypeORM 엔티티 (데코레이터는 여기에만)
-  order/  product/  cart/  point/  auth/  payment/
+  order/
+    events/                        # 이 모듈이 발행하는 이벤트. index.ts로 공개
+      order-confirmed.event.ts
+  point/
+    earn-point/
+      on-order-confirmed.handler.ts  # 구독자는 반응하는 모듈 안에 둔다
+  product/  cart/  auth/  payment/
   shared/
+    event/
+      event-publisher.ts           # 포트. abstract class
+      infra/                       # in-process, outbox, kafka 구현과 outbox 워커
     database/                      # BaseTimeEntity, 데이터 소스, 트랜잭션 설정
     redis/
     config/
@@ -137,6 +146,9 @@ bench/k6/                          # 부하 테스트 스크립트
 
 - 다른 모듈은 그 모듈의 `index.ts`가 공개한 서비스만 함수로 호출합니다. HTTP로 부르지 않습니다.
 - 다른 모듈의 테이블을 직접 읽거나 쓰지 않습니다. 예: 주문 모듈은 `member_coupon`을 직접 UPDATE하지 않고, 쿠폰 모듈의 `useCoupon()`을 회원 쿠폰 한 장마다 부릅니다.
+- 결과가 필요하고 같이 성공하거나 실패해야 하는 일은 함수로 부르고, 일어난 일에 다른 모듈이 반응하는 일은 이벤트로 보냅니다. 기준과 이벤트 목록은 [ADR-0003](../adr/0003-module-reactions-through-events.md)에 있습니다.
+- 이벤트는 `EventPublisher`로만 발행하고, 이름은 일어난 일(`ORDER_CONFIRMED`)로 짓습니다. 고유 ID, 이름, 발생 시각, ID와 값만 담고 엔티티 객체는 넣지 않습니다.
+- 구독자는 같은 이벤트를 두 번 받아도 결과가 같게 만듭니다.
 - 이 규칙은 dependency-cruiser로 CI에서 검사합니다. 설정은 첫 코드를 쓸 때 추가합니다.
   - `domain/`은 `infra/`, `ports/`, `@nestjs/*`, `typeorm`, `ioredis`를 import하지 않습니다.
   - 다른 모듈의 파일은 `index.ts`로만 import하고, `shared/`는 예외입니다.
@@ -147,7 +159,8 @@ bench/k6/                          # 부하 테스트 스크립트
 - `@nestjs-cls/transactional`과 TypeORM 어댑터를 씁니다. 트랜잭션을 인자로 넘기지 않아도 같은 요청 안의 다른 모듈 서비스가 같은 트랜잭션에 참여합니다.
 - `typeorm-transactional`은 2023년 이후 배포가 없어서 쓰지 않습니다.
 - Redis 호출은 DB 트랜잭션 밖에서 해서, Redis 왕복 동안 DB 커넥션을 붙잡지 않습니다.
-- CLS 컨텍스트 밖(분리된 비동기 콜백 등)에서 부르면 트랜잭션 없이 실행될 수 있습니다. 결제를 붙일 때 만드는 비동기 처리에서 테스트로 확인합니다 (미검증).
+- CLS 컨텍스트 밖(이벤트 구독자, outbox 워커, Kafka 컨슈머)에서 부르면 트랜잭션 없이 실행될 수 있습니다. 구독자는 자기 트랜잭션을 새로 열고, 이벤트를 처음 붙일 때 테스트로 확인합니다 (미검증).
+- 프로세스 안 이벤트는 트랜잭션 메서드가 끝난 뒤 바깥 유스케이스에서 보냅니다. 커밋 뒤 실행 기능은 `@nestjs-cls/transactional` 문서에서 찾지 못했습니다 (미검증).
 
 ## DB와 엔티티
 
@@ -180,15 +193,15 @@ bench/k6/                          # 부하 테스트 스크립트
 
 - 같은 기능을 여러 방식으로 비교하는 곳은 abstract class로 추상화합니다. 예: `IssuanceStrategy`
 - TypeScript `interface`는 실행 시점에 사라져서 Nest DI 토큰으로 쓸 수 없어서, abstract class를 토큰으로 씁니다. abstract class에는 추상 메서드만 둡니다.
-- 어떤 구현을 쓸지는 모듈의 `useFactory` 한 곳에서 환경 변수로 정합니다. 예: `ISSUANCE_STRATEGY=redis`
+- 어떤 구현을 쓸지는 모듈의 `useFactory` 한 곳에서 환경 변수로 정합니다. 예: `ISSUANCE_STRATEGY=redis`, `EVENT_TRANSPORT=outbox`
 - 바꿔 끼우지 않는 곳에는 추상화를 만들지 않습니다. 구현이 하나뿐이고 테스트 대역도 쓰지 않는 포트가 생기면 지웁니다.
 - 일부러 깨지게 만든 실험용 구현은 Before 수치를 다시 낼 때 쓰므로 지우지 않습니다.
 
 ## 하지 않는 것
 
-- 모든 저장소에 포트·어댑터·매퍼를 두는 정석 헥사고날 구조를 쓰지 않습니다. 진입점이 둘 이상이 되거나(예: 결제를 붙일 때 생기는 비동기 워커) 도메인 규칙이 매핑 비용보다 커지면 다시 검토합니다.
-- `@nestjs/cqrs` 같은 명령·이벤트 버스를 쿠폰 발급과 주문에서 쓰지 않습니다.
-- 사라지면 안 되는 부수 효과를 프로세스 안 이벤트(`@nestjs/event-emitter`)로 보내지 않습니다. 서버가 죽으면 이 이벤트는 사라집니다.
+- 모든 저장소에 포트·어댑터·매퍼를 두는 정석 헥사고날 구조를 쓰지 않습니다. 진입점이 둘 이상이 되거나(예: outbox 워커, Kafka 컨슈머) 도메인 규칙이 매핑 비용보다 커지면 다시 검토합니다.
+- `@nestjs/cqrs` 같은 명령 버스를 쓰지 않습니다. 명령은 공개 서비스 함수로 부르고, 이벤트는 `EventPublisher` 하나로 보냅니다.
+- 사라지면 안 되는 반응을 프로세스 안 이벤트(`@nestjs/event-emitter`)로 운영하지 않습니다. 서버가 죽으면 이 이벤트는 사라집니다. 구매 확정 적립에서는 누락을 재현하는 Before 구현으로만 씁니다.
 
 ---
 

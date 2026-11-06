@@ -6,7 +6,7 @@
 
 - 상황: 1만 장 한정 쿠폰에 10만 명이 행사 시작 1분 안에 몰리고, 쿠폰을 받은 회원은 재고가 한정된 행사 상품을 주문합니다 (가정).
 - 목표: 초과 발급·초과 판매 0건, 중복 발급·중복 주문 0건, 쿠폰 발급 3,000 RPS에서 p99 300ms 이하입니다.
-- 진행: 쿠폰 발급(로그인, 한정 수량 쿠폰), 주문(상품·장바구니·주문·포인트 사용), 결제(Mock 결제·포인트 비동기 적립) 순서로 진행합니다.
+- 진행: 쿠폰 발급(로그인, 한정 수량 쿠폰), 주문(상품·장바구니·주문·포인트 사용), 이벤트(프로세스 안, outbox, Kafka 순으로 전달 방식 바꾸기), 결제(Mock 결제) 순서로 진행합니다.
 - 지금: 결제까지 설계 문서를 다 썼고, 아직 구현 전입니다.
 - 자세한 내용은 [문제 정의](docs/reference/problem.md)와 [유저 플로우](docs/reference/user-flows.md)에 있습니다.
 
@@ -37,11 +37,13 @@ Risk는 기능 문서에서 정하고, 아직 측정 전입니다.
 - PostgreSQL, Redis (버전은 docker compose 작성 시 확정)
 - TypeORM, `@nestjs-cls/transactional` (트랜잭션 전파)
 - Vitest (테스트), oxlint (린트), Prettier (포맷), dependency-cruiser (모듈 경계 검사, 도입 예정)
+- `@nestjs/event-emitter`, Kafka (모듈 사이 이벤트, 도입 예정. Kafka 버전은 붙일 때 확정)
 - k6 (부하 테스트, 도입 예정)
 
 ## 4. 아키텍처
 
 모듈러 모놀리스로 만듭니다. 모듈끼리는 공개 서비스를 함수로 호출하고, 다른 모듈의 테이블은 직접 쓰지 않습니다 ([ADR-0002](docs/adr/0002-modular-monolith-with-one-port.md)).
+결과가 필요한 일은 함수로 부르고, 일어난 일에 다른 모듈이 반응하는 일은 이벤트로 보냅니다. 이벤트 전달은 프로세스 안에서 outbox, Kafka 순서로 바꿉니다 ([모듈 사이 반응은 이벤트로](docs/adr/0003-module-reactions-through-events.md)).
 쿠폰 발급은 Redis가 결정하고 DB는 기록만 합니다 ([ADR-0001](docs/adr/0001-redis-decides-coupon-issue.md)). 아직 DB와 Redis는 연결하지 않았습니다.
 
 ```mermaid
@@ -57,14 +59,19 @@ flowchart LR
         payment["payment (결제)"]
         order --> product
         order --> coupon
-        order --> point
-        order --> cart
+        order -- "포인트 사용·복구" --> point
+        order -- "항목 읽기" --> cart
+        order -. "주문됨" .-> cart
+        order -. "구매 확정됨" .-> point
         payment --> order
     end
     coupon -- "발급 결정" --> Redis[(Redis)]
     API --> DB[(PostgreSQL)]
     payment -- "Mock" --> PG[Mock PG]
+    API -. "outbox 다음 단계" .-> Kafka[(Kafka)]
 ```
+
+실선은 함수 호출이고, 점선은 이벤트입니다.
 
 ## 5. 문서
 

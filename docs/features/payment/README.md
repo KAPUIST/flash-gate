@@ -151,7 +151,7 @@ stateDiagram-v2
 #### 허용하는 지연·불일치
 
 - 승인과 주문 상태가 `ORDERED`가 되는 순간 사이에 최대 수 분이 걸릴 수 있습니다.
-- 돈이 나갔는데 주문이 완료도 실패도 아닌 상태로 남은 건수는 보상 후 0이어야 합니다 ([목표 수치](../../reference/problem.md#결제와-포인트-초안)).
+- 돈이 나갔는데 주문이 완료도 실패도 아닌 상태로 남은 건수는 보상 후 0이어야 합니다 ([목표 수치](../../reference/problem.md#결제-초안)).
 
 ---
 
@@ -221,7 +221,7 @@ stateDiagram-v2
 - `ix_payment_requested`: `(requested_at) WHERE status = 'REQUESTED'`. 응답을 받지 못했을 때와 승인 뒤 주문 처리가 실패했을 때 결과 확인 배치가 이 인덱스로 찾습니다.
 - Mock 결제라도 개인정보처럼 보이는 값을 남기지 않으려고, 결제 수단 정보(카드 번호 등)는 저장하지 않습니다.
 - 결제를 거절당한 주문은 다시 결제하지 않으므로 주문당 결제는 1건입니다. 다시 사려면 새 주문을 만듭니다.
-- 다시 시도할 일(승인 취소 재시도)은 [포인트 Flow의 outbox 제안](../point/flows.md#결제를-붙인-뒤-outbox와-워커로-비동기-적립)과 같은 `outbox_event` 테이블에 `PAYMENT_CANCEL_REQUESTED`로 넣습니다.
+- 다시 시도할 일(승인 취소 재시도)은 [이벤트 보관함](../../reference/erd.md#outbox_event-이벤트-보관함)인 `outbox_event` 테이블에 작업으로 `PAYMENT_CANCEL_REQUESTED`로 넣습니다.
 
 ---
 

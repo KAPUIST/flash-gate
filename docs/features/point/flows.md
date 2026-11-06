@@ -128,15 +128,18 @@ sequenceDiagram
 
 ## 시나리오 5. 구매 확정으로 포인트 적립
 
-관련 Risk: 포인트 이중 적립
+관련 Risk: 포인트 적립 누락, 포인트 이중 적립
 
-### 결제 전: 확정과 같은 트랜잭션에서 적립
+주문 모듈은 확정만 하고 구매 확정됨(`ORDER_CONFIRMED`) 이벤트를 발행합니다. 포인트 모듈의 구독자가 그 이벤트를 받아 적립합니다.
+전달 방식은 [ADR-0003](../../adr/0003-module-reactions-through-events.md) 순서대로 프로세스 안, outbox, Kafka로 바꾸고, 발행 코드와 구독자 코드는 그대로 둡니다.
+
+### 확정과 발행
 
 ```mermaid
 sequenceDiagram
     actor U as 회원 또는 자동 확정 배치
     participant O as 주문 모듈
-    participant P as 포인트 모듈
+    participant E as EventPublisher
     participant D as PostgreSQL
 
     U->>O: 구매 확정
@@ -145,92 +148,118 @@ sequenceDiagram
     alt 바뀐 행 0개 (이미 확정·취소)
         O-->>U: 409 (배치는 건너뜀)
     else 확정됨
-        O->>P: earn(memberId, orderId, paymentAmount)
-        alt floor(paymentAmount × 5%) = 0
-            P-->>O: 아무것도 하지 않음
-        else 적립
-            P->>D: INSERT member_point ... ON CONFLICT DO NOTHING
-            P->>D: UPDATE member_point SET balance = balance + earned
-            P->>D: INSERT point_history (EARN, +earned)
-        end
+        O->>E: publish(ORDER_CONFIRMED { eventId, orderId, memberId, paymentAmount })
         Note over O,D: 커밋
         O-->>U: 200
     end
 ```
 
-- 확정 처리가 두 번 실행되면 두 번째는 주문 상태 조건(`WHERE status = 'ORDERED'`)에서 막힙니다.
-- 혹시 그 조건을 지나도 `EARN` 내역 INSERT가 `uq_point_history_order_type`에 걸려서 트랜잭션 전체가 롤백됩니다 (포인트 이중 적립).
+- 확정 처리가 두 번 실행되면 두 번째는 주문 상태 조건(`WHERE status = 'ORDERED'`)에서 막히고, 이벤트도 다시 나가지 않습니다.
+- `publish`가 실제로 무엇을 하는지는 전달 방식마다 다릅니다. 아래 세 절에 있습니다.
 
-### 결제를 붙인 뒤: outbox와 워커로 비동기 적립
+### 구독자: 이벤트를 받아 적립
 
-확정 트랜잭션은 주문 상태와 "적립할 것" 기록만 함께 커밋하고, 포인트는 워커가 따로 쌓습니다.
-프로세스 안 이벤트(`@nestjs/event-emitter`)는 쓰지 않습니다. 커밋 직후 서버가 죽으면 이벤트가 사라지기 때문입니다 ([개발 규칙](../../reference/conventions.md#하지-않는-것)).
+```mermaid
+sequenceDiagram
+    participant S as 적립 구독자 (포인트 모듈)
+    participant P as 포인트 서비스
+    participant D as PostgreSQL
+
+    S->>P: earn(memberId, orderId, paymentAmount)
+    Note over P,D: 적립 트랜잭션 (구독자가 새로 엶)
+    alt floor(paymentAmount × 5%) = 0
+        P-->>S: 아무것도 하지 않음
+    else 처음 받은 이벤트
+        P->>D: INSERT member_point ... ON CONFLICT DO NOTHING
+        P->>D: UPDATE member_point SET balance = balance + earned
+        P->>D: INSERT point_history (EARN, +earned)
+        Note over P,D: 커밋
+    else 이미 적립한 주문 (UNIQUE 위반)
+        Note over P,D: 롤백. 이미 처리한 것으로 보고 성공으로 끝냅니다
+    end
+```
+
+- 같은 이벤트가 두 번 와도 `uq_point_history_order_type`이 두 번째 `EARN`을 막습니다 (포인트 이중 적립).
+- 구독자는 주문 모듈을 import하지 않고, 이벤트에 담긴 값만 씁니다.
+
+### 전달 1. 프로세스 안 이벤트 (Before)
+
+확정 유스케이스가 트랜잭션 메서드가 끝난 뒤 `@nestjs/event-emitter`로 이벤트를 보냅니다. 서버 메모리 안에서만 전달됩니다.
+이 방식으로 아래 한계를 재현하고 기록합니다.
+
+| 해 볼 것 | 예상 결과 |
+|---|---|
+| 트랜잭션 안에서 바로 발행 | 구독자가 확정 트랜잭션에 섞이거나, 롤백된 확정에 반응합니다. 어느 쪽인지는 실험으로 확인합니다 (미검증) |
+| 커밋 뒤 발행, 발행 직전에 서버 종료 | 확정됐는데 적립이 없는 주문이 생깁니다 (포인트 적립 누락) |
+| 구독자에서 예외 | 로그만 남고 다시 시도하지 않아서, 역시 적립이 빠집니다 |
+
+### 전달 2. outbox와 폴링 워커
+
+`publish`는 확정과 같은 트랜잭션에서 `outbox_event`에 행을 넣기만 합니다. 커밋되면 확정과 이벤트가 함께 남고, 롤백되면 함께 사라집니다.
 
 ```mermaid
 sequenceDiagram
     participant O as 주문 모듈
     participant D as PostgreSQL
-    participant R as 릴레이
-    participant Q as BullMQ (Redis)
-    participant W as 적립 워커
-    participant P as 포인트 모듈
+    participant W as outbox 워커
+    participant S as 적립 구독자
 
     Note over O,D: 확정 트랜잭션
     O->>D: UPDATE orders ... status = 'CONFIRMED'
-    O->>D: INSERT outbox_event (POINT_EARN_REQUESTED, orderId)
+    O->>D: INSERT outbox_event (ORDER_CONFIRMED, orderId, payload)
     Note over O,D: 커밋 (둘 다 남거나 둘 다 없음)
 
     loop 1초마다
-        R->>D: SELECT ... FROM outbox_event WHERE published_at IS NULL FOR UPDATE SKIP LOCKED LIMIT 100
-        R->>Q: add(job, jobId = outbox_event.id)
-        R->>D: UPDATE outbox_event SET published_at = now()
-    end
-
-    Q->>W: job 전달
-    W->>P: earn(memberId, orderId, paymentAmount)
-    Note over P,D: 적립 트랜잭션
-    alt 처음 받은 메시지
-        P->>D: UPDATE member_point ... / INSERT point_history (EARN)
-        Note over P,D: 커밋
-        W-->>Q: 완료 (ack)
-    else 이미 적립한 주문 (UNIQUE 위반)
-        Note over P,D: 롤백. 이미 처리된 것으로 본다
-        W-->>Q: 완료 (ack)
-    else DB 에러
-        W-->>Q: 실패 → BullMQ가 지수 백오프로 다시 시도
+        W->>D: SELECT ... FROM outbox_event WHERE published_at IS NULL ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 100
+        W->>S: 이벤트 전달
+        alt 구독자 성공
+            W->>D: UPDATE outbox_event SET published_at = now()
+        else 구독자 실패
+            Note over W,D: 그대로 두고 다음 폴링에서 다시 전달
+        end
     end
 ```
 
-#### 같은 메시지가 두 번 오는 경우
-
 | 상황 | 결과 |
 |---|---|
-| 릴레이가 큐에 넣은 뒤 `published_at`을 쓰기 전에 죽음 | 다음 릴레이가 같은 행을 다시 넣습니다. BullMQ는 같은 `jobId`를 한 번만 받지만, 이미 처리가 끝나 job이 지워졌다면 다시 들어올 수 있습니다 |
-| 워커가 적립을 커밋한 뒤 ack 전에 죽음 | BullMQ가 같은 job을 다시 줍니다 |
-| 어느 경우든 | `uq_point_history_order_type`이 두 번째 `EARN`을 막고, 워커는 UNIQUE 위반을 성공으로 보고 ack합니다 |
+| 구독자가 적립을 커밋한 뒤, 워커가 `published_at`을 쓰기 전에 죽음 | 다음 폴링에서 같은 이벤트가 다시 갑니다. UNIQUE가 두 번째 적립을 막습니다 |
+| 워커가 두 대 | `FOR UPDATE SKIP LOCKED`로 같은 행을 동시에 잡지 않습니다 |
 
-- 큐 도구는 BullMQ를 추천합니다. 이미 Redis를 쓰고 있고, BullMQ가 재시도·지연·실패 목록을 기본으로 줍니다. Redis Streams는 소비자 그룹과 미처리 메시지 회수를 직접 만들어야 합니다. 최종 선택은 결제를 붙이는 구현 때 정합니다 (구현 시 확정).
-- 큐는 "더 빨리 전달하는 길"일 뿐이고, 기준은 outbox 테이블입니다. 큐 데이터가 사라져도 `published_at`을 비우면 다시 보낼 수 있습니다.
-- 재시도를 다 써도 실패한 job은 실패 목록에 남기고, 운영자가 원인을 고친 뒤 다시 넣습니다.
+이 방식으로 만날 한계도 기록합니다.
 
-#### outbox 테이블 (ERD 제안, 초안)
+- 폴링 간격만큼 적립이 늦고, 요청이 몰리면 보내지 않은 행이 쌓입니다.
+- 계속 실패하는 이벤트가 있으면 같은 행을 매번 다시 잡습니다.
+- 구독자가 늘면 워커 하나가 모든 구독자를 불러야 하고, 하나만 실패해도 그 이벤트를 다시 보내야 합니다. 구독자마다 따로 받고 따로 다시 시도하려고 Kafka로 넘어갑니다.
 
-[ERD](../../reference/erd.md)에는 아직 없고, 결제를 설계할 때 추가합니다.
+### 전달 3. outbox와 Kafka
 
-| 컬럼 | 타입 | 제약 |
-|---|---|---|
-| id | bigint | PK |
-| event_type | varchar(50) | NOT NULL. 예: `POINT_EARN_REQUESTED` |
-| aggregate_id | bigint | NOT NULL. 예: 주문 ID |
-| payload | jsonb | NOT NULL. 예: `{ memberId, orderId, paymentAmount }` |
-| published_at | timestamptz | NULL. 큐에 넣은 시각 |
-| created_at | timestamptz | NOT NULL |
+outbox에 넣는 것은 전달 2와 같고, 워커 대신 릴레이가 Kafka 토픽으로 보냅니다. 구독자는 Kafka 컨슈머 그룹으로 받습니다.
 
-- `uq_outbox_event_type_aggregate`: `UNIQUE(event_type, aggregate_id)`. 한 주문에 적립 요청은 하나입니다.
-- `ix_outbox_event_unpublished`: `(id) WHERE published_at IS NULL`. 릴레이가 이 인덱스로 보낼 행을 찾습니다.
-- 다 보낸 행을 지울지, 보관 기간을 둘지는 결제를 붙일 때 정합니다.
+```mermaid
+sequenceDiagram
+    participant D as PostgreSQL
+    participant R as 릴레이
+    participant K as Kafka (order-events 토픽)
+    participant S as 적립 구독자 (컨슈머 그룹 point)
 
-#### 모든 확정 주문이 결국 적립되었는지 확인
+    loop 1초마다
+        R->>D: SELECT ... FROM outbox_event WHERE published_at IS NULL ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 100
+        R->>K: produce(key = orderId, value = 이벤트)
+        R->>D: UPDATE outbox_event SET published_at = now()
+    end
+    K->>S: 이벤트 전달
+    S->>S: 적립 (구독자 절과 같음)
+    S->>K: 오프셋 커밋
+```
+
+- 같은 주문의 이벤트는 같은 키라서 같은 파티션으로 가고, 그 안에서만 순서가 지켜집니다.
+- 릴레이가 보낸 뒤 `published_at`을 쓰기 전에 죽거나, 컨슈머가 적립을 커밋한 뒤 오프셋을 커밋하기 전에 죽으면 같은 이벤트가 다시 옵니다. 여기서도 UNIQUE가 막습니다.
+- 처리하지 못하는 메시지가 파티션의 뒤를 막는 문제, 컨슈머가 바뀌는 동안 생기는 중복, 부하 때 밀린 메시지 수(lag)를 실험으로 잽니다.
+- Kafka 버전과 클라이언트 라이브러리는 붙일 때 정합니다 (구현 시 확정).
+
+`outbox_event` 테이블은 [ERD](../../reference/erd.md#outbox_event-이벤트-보관함)에 있습니다.
+
+### 모든 확정 주문이 결국 적립되었는지 확인
 
 ```sql
 -- 확정됐는데 적립 내역이 없는 주문 (결제 금액의 5%가 0인 주문은 제외)
@@ -243,7 +272,7 @@ SELECT o.id
    AND h.id IS NULL;
 ```
 
-이 쿼리 결과는 0건이어야 하고, 결제를 붙인 뒤의 부하 테스트가 끝나면 검증 쿼리로 씁니다.
+이 쿼리 결과는 0건이어야 합니다. 전달 방식마다 부하 테스트가 끝나면 이 쿼리로 포인트 적립 누락을 셉니다.
 
 ---
 

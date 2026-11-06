@@ -130,13 +130,15 @@ sequenceDiagram
         end
         PT->>DB: INSERT point_history (type = USE, order_id, balance_after)
     end
-    opt 장바구니에서 옴
-        O->>C: removeItems(memberId, cartItemIds)
-        C->>DB: DELETE FROM cart_item WHERE id IN (...) AND cart_id = 회원의 장바구니
-    end
     O->>DB: COMMIT
     O-->>U: 201 주문 (status = ORDERED)
+    opt 장바구니에서 옴
+        O-)C: ORDER_PLACED 이벤트 (커밋 뒤, 프로세스 안)
+        C->>DB: DELETE FROM cart_item WHERE id IN (...) AND cart_id = 회원의 장바구니
+    end
 ```
+
+- 장바구니 정리는 주문 트랜잭션에 넣지 않고 커밋 뒤 이벤트로 합니다. 이벤트를 잃으면 장바구니에 상품이 남을 뿐이라 프로세스 안 이벤트로 둡니다 ([모듈 사이 반응은 이벤트로](../../adr/0003-module-reactions-through-events.md)).
 
 - 사용 기한, 쿠폰 대상, 최소 주문 금액은 트랜잭션을 열기 전에 주문 도메인 클래스가 확인합니다. 포인트 규칙(5,000 이상, 10% 한도)은 트랜잭션 안에서 포인트 모듈 `use()`의 `PointPolicy`가 확인합니다. 동시에 바뀌는 값(재고, 쿠폰 상태, 잔액)은 트랜잭션 안의 조건부 UPDATE가 지킵니다.
 - 포인트 사용 내역은 주문 ID가 있어야 해서 주문을 INSERT한 뒤에 남기고, 잔액 차감과 같은 트랜잭션에서 처리합니다.
@@ -267,7 +269,7 @@ sequenceDiagram
 sequenceDiagram
     actor U as 회원
     participant O as 주문 API
-    participant PT as 포인트 모듈
+    participant E as EventPublisher
     participant DB as PostgreSQL
 
     U->>O: POST /orders/{orderId}/confirm
@@ -277,18 +279,12 @@ sequenceDiagram
         O->>DB: ROLLBACK
         O-->>U: 404 ORDER_NOT_FOUND 또는 409 ORDER_NOT_CONFIRMABLE
     end
-    opt 결제 금액 × 5% ≥ 1
-        O->>PT: earn(memberId, orderId, payment_amount)
-        Note over PT: 적립액 = floor(payment_amount × 5 / 100). PointPolicy가 계산
-        PT->>DB: INSERT member_point ... ON CONFLICT (member_id) DO NOTHING
-        PT->>DB: UPDATE member_point SET balance = balance + e WHERE member_id = ?
-        PT->>DB: INSERT point_history (type = EARN, order_id, balance_after)
-    end
+    O->>E: publish(ORDER_CONFIRMED { eventId, orderId, memberId, paymentAmount })
     O->>DB: COMMIT
     O-->>U: 200 주문 (status = CONFIRMED)
 ```
 
-- 결제를 붙이기 전의 흐름입니다. 결제를 붙인 뒤에는 적립을 같은 트랜잭션에서 하지 않고, 확정 트랜잭션에서 "적립할 일"을 남긴 뒤 워커가 비동기로 처리합니다 ([포인트 Flow](../point/flows.md)).
+- 적립은 포인트 모듈의 구독자가 이벤트를 받아서 합니다. 적립액 계산, 중복 방지, 전달 방식별 차이는 [포인트 Flow](../point/flows.md#시나리오-5-구매-확정으로-포인트-적립)에 있습니다.
 
 ## 시나리오 8. (시스템) 자동 구매 확정
 

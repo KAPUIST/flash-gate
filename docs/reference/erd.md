@@ -1,7 +1,7 @@
 # ERD
 
 테이블은 여러 기능이 같이 쓰므로 ERD는 여기 한 곳에만 두고, 기능 문서에서는 이 문서를 링크합니다.
-쿠폰 발급과 주문에 쓰는 테이블(포인트 테이블 포함)을 확정했습니다. 포인트 비동기 적립은 결제를 붙일 때 만듭니다. 결제 테이블은 [결제 기능](../features/payment/)을 설계할 때 추가합니다.
+쿠폰 발급과 주문에 쓰는 테이블(포인트 테이블과 이벤트 보관함 포함)을 확정했습니다. 결제 테이블은 [결제 기능](../features/payment/)을 설계할 때 추가합니다.
 
 ## 한눈에 보기
 
@@ -22,6 +22,7 @@
 | [order_coupon](#order_coupon-주문에-쓴-쿠폰) | order | 주문 | 주문에 쓴 쿠폰 |
 | [member_point](#member_point-point_history-포인트) | point | 주문 | 포인트 잔액 |
 | [point_history](#member_point-point_history-포인트) | point | 주문 | 포인트 내역. 추가만 하고 고치지 않음 |
+| [outbox_event](#outbox_event-이벤트-보관함) | shared/event | 주문 | 발행한 이벤트. 전달을 마치면 시각을 기록 |
 
 ## 다이어그램
 
@@ -156,9 +157,17 @@ erDiagram
         int balance_after
         bigint order_id FK "nullable"
     }
+    OUTBOX_EVENT {
+        bigint id PK
+        uuid event_id UK
+        varchar event_type "ORDER_CONFIRMED 등"
+        bigint aggregate_id "예: 주문 ID"
+        jsonb payload
+        timestamptz published_at "nullable"
+    }
 ```
 
-다이어그램에서는 모든 테이블에 있는 `created_at`, `updated_at`을 생략했습니다.
+다이어그램에서는 모든 테이블에 있는 `created_at`, `updated_at`을 생략했습니다. `outbox_event`는 다른 테이블을 FK로 참조하지 않습니다.
 
 ## 공통 규칙
 
@@ -379,10 +388,29 @@ erDiagram
 - `member_point`에는 `created_at`, `updated_at`이 있습니다. 처음 적립할 때 `INSERT ... ON CONFLICT DO NOTHING`으로 만들고, 행이 없으면 잔액 0입니다.
 - 회원 테이블과 나누는 이유는 재고와 같습니다. 주문할 때마다 잔액 행이 잠기는데, 회원 조회가 그 잠금을 기다리지 않게 합니다.
 - 사용은 `UPDATE member_point SET balance = balance - :x WHERE member_id = :id AND balance >= :x`입니다. 바뀐 행이 0개면 잔액 부족입니다 (포인트 이중 사용).
-- `uq_point_history_order_type`: `UNIQUE(order_id, type) WHERE order_id IS NOT NULL`. 비동기 적립 메시지가 두 번 와도 한 번만 적립됩니다 (포인트 이중 적립).
+- `uq_point_history_order_type`: `UNIQUE(order_id, type) WHERE order_id IS NOT NULL`. 구매 확정됨 이벤트가 두 번 와도 한 번만 적립됩니다 (포인트 이중 적립).
 - `ix_point_history_member_created_at`: `(member_id, created_at DESC)`. 내 포인트 내역에 씁니다.
 - 잔액과 내역은 항상 같은 트랜잭션에서 바꾸고, `balance = SUM(amount)`를 테스트로 확인합니다.
 - 포인트는 구매 확정 때 쌓입니다. 확정된 주문은 취소할 수 없어서 적립을 되돌리는 내역(`EARN_CANCEL`)이 없습니다.
+
+### outbox_event (이벤트 보관함)
+
+이벤트를 발행한 트랜잭션 안에서 함께 저장해서, 커밋된 일의 이벤트는 사라지지 않게 합니다 ([모듈 사이 반응은 이벤트로](../adr/0003-module-reactions-through-events.md)). 전달 방식이 outbox나 Kafka일 때 씁니다.
+
+| 컬럼 | 타입 | 제약 |
+|---|---|---|
+| id | bigint | PK. 보낼 순서 |
+| event_id | uuid | NOT NULL. 이벤트 고유 ID. 발행할 때 만들고, 구독자가 중복을 확인할 때 씁니다 |
+| event_type | varchar(50) | NOT NULL. 예: `ORDER_CONFIRMED`, `PAYMENT_CANCEL_REQUESTED` |
+| aggregate_id | bigint | NOT NULL. 예: 주문 ID. Kafka 메시지 키로도 씁니다 |
+| payload | jsonb | NOT NULL. 예: `{ "memberId": 1, "orderId": 10, "paymentAmount": 41391 }` |
+| published_at | timestamptz | NULL. 전달을 마친 시각 |
+| created_at | timestamptz | NOT NULL. `updated_at` 없음 |
+
+- `uq_outbox_event_event_id`: `UNIQUE(event_id)`.
+- `uq_outbox_event_type_aggregate`: `UNIQUE(event_type, aggregate_id)`. 한 주문의 구매 확정됨 이벤트는 하나입니다.
+- `ix_outbox_event_unpublished`: `(id) WHERE published_at IS NULL`. 워커와 릴레이가 이 인덱스로 보낼 행을 찾습니다.
+- 행을 넣는 것은 `EventPublisher`의 outbox 구현뿐이고, 발행하는 모듈은 이 테이블을 모릅니다.
 
 ## 반정규화한 곳과 지키는 장치
 
@@ -468,9 +496,10 @@ DB가 기준이고, Redis는 언제든 DB에서 다시 만들 수 있어야 합�
 | member | auth | [인증](../features/auth/) |
 | coupon, member_coupon, coupon_product, coupon_brand | coupon | [쿠폰](../features/coupon/), [주문](../features/order/) (쿠폰 사용·복구) |
 | brand, product, product_stock | product | [상품](../features/product/), [장바구니](../features/cart/), [주문](../features/order/) (재고 차감·복구) |
-| cart, cart_item | cart | [장바구니](../features/cart/), [주문](../features/order/) (주문한 상품 빼기) |
+| cart, cart_item | cart | [장바구니](../features/cart/), [주문](../features/order/) (항목 읽기. 주문한 상품 빼기는 주문됨 이벤트의 구독자가 합니다) |
 | orders, order_item, order_coupon | order | [주문](../features/order/), [결제](../features/payment/) |
 | member_point, point_history | point | [포인트](../features/point/), [주문](../features/order/) (포인트 사용·복구) |
+| outbox_event | shared/event | 이벤트를 발행하는 기능 ([주문](../features/order/), [결제](../features/payment/)). `EventPublisher`로만 씁니다 |
 
 ## 나중에 검토할 것
 
@@ -479,7 +508,7 @@ DB가 기준이고, Redis는 언제든 DB에서 다시 만들 수 있어야 합�
 | 항목 | 넣을 시점 |
 |---|---|
 | `payment` 테이블, `orders` 결제 상태(`PAYMENT_PENDING`, `PAYING`, `PAYMENT_FAILED`, `CANCELING`)와 `payment_failed_at` | 결제를 붙일 때. 제안은 [결제 기능 ERD 제안](../features/payment/README.md) |
-| `outbox_event` 테이블 (포인트 비동기 적립, 결제 승인 취소 재시도) | 결제를 붙일 때. 제안은 [포인트 Flow](../features/point/flows.md) |
+| 다 보낸 `outbox_event` 행 정리 (삭제 또는 보관 기간) | 쌓인 행 때문에 워커가 느려질 때 |
 | 회원 쿠폰 회수 (`REVOKED`) | 관리자 기능 |
 | 브랜드 한정 주문 쿠폰 ("나이키 5만 원 이상 구매 시") | 필요해질 때. 기준 금액 계산이 하나 더 생깁니다 |
 | 쿠폰 정책 분리 (`coupon_policy`) | 여러 쿠폰이 같은 정책을 공유할 때 |
