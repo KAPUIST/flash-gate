@@ -16,6 +16,9 @@ import type { Env } from '../config/env.js';
         database: config.get('POSTGRES_DB', { infer: true }),
         // The schema changes only through migrations (docs/reference/conventions.md).
         synchronize: false,
+        // bigint IDs and count(*) come back as numbers instead of strings.
+        // IDs stay far below Number.MAX_SAFE_INTEGER, so no precision is lost.
+        parseInt8: true,
         autoLoadEntities: true,
       }),
     }),

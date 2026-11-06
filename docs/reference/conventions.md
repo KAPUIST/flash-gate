@@ -169,7 +169,7 @@ bench/k6/                          # 부하 테스트 스크립트
 - TypeORM `synchronize`는 끄고, 스키마는 마이그레이션으로만 바꿉니다.
 - 모든 엔티티는 `BaseTimeEntity`(`createdAt`, `updatedAt`)를 상속합니다. 예외로 `point_history`와 `outbox_event`는 고치는 일이 거의 없는 기록이라 `createdAt`만 둡니다. `outbox_event`의 전달 상태는 전용 컬럼(`published_at` 등)으로 남깁니다. TypeORM의 `BaseEntity`(Active Record)와 이름이 겹치지 않게 이 이름을 씁니다.
 - `@DeleteDateColumn`은 soft delete 하는 엔티티(member, coupon, product)에 직접 붙입니다. 이 컬럼이 있으면 조회 동작이 바뀌어서 부모 클래스에 숨기지 않습니다.
-- bigint ID는 `number`로 받고, 드라이버 설정으로 int8을 숫자로 바꿉니다. 구체적인 옵션 이름은 구현할 때 확인합니다 (미검증).
+- bigint ID는 `number`로 받고, TypeORM 옵션 `parseInt8: true`로 int8을 숫자로 바꿉니다. `count(*)` 결과도 숫자로 옵니다.
 - 바뀌지 않는 사실은 DB 제약으로, 바뀌는 정책은 도메인 클래스로 지킵니다 ([ERD 공통 규칙](erd.md#공통-규칙)).
 - 동시에 바뀌는 수량(재고, 포인트 잔액, 회원 쿠폰 상태)은 조건부 UPDATE 한 문장으로 바꿉니다. `findOne`으로 읽고 값을 바꾼 뒤 `save()`하는 방식은 읽은 값으로 덮어써서 갱신 손실이 생기므로 쓰지 않습니다. 이 방식은 실험의 Before 구현에서만 일부러 씁니다.
 
