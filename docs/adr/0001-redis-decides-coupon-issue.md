@@ -32,7 +32,7 @@ DB 카운터(`coupon.issued_quantity`)는 두지 않습니다. 발급 수는 회
 
 - Redis를 쓰는 목적은 DB 부담을 줄이는 데 있습니다. 가장 큰 이득은 소진될 요청을 DB까지 보내지 않는 것이고, B와 C 모두 이 이득을 얻습니다. C는 여기에 더해 성공 요청도 쿠폰 행 잠금을 기다리지 않습니다.
 - 어긋남은 같은 숫자를 두 곳에서 따로 셀 때 생깁니다. C는 숫자를 Redis 한 곳에서만 세고, Redis 상태는 언제든 DB 행으로 다시 만들 수 있습니다.
-- 올리브영 등 국내 선착순 쿠폰 사례도 Redis가 판정하고 DB 기록은 따로 하는 구조입니다 ([조사 노트](../../../research_notes/), 저장소 밖).
+- 올리브영 등 국내 선착순 쿠폰 사례도 Redis가 판정하고 DB 기록은 따로 하는 구조입니다 ([올리브영](https://oliveyoung.tech/2025-12-15/fcfs-coupon/), [여기어때](https://techblog.gccompany.co.kr/redis-kafka%EB%A5%BC-%ED%99%9C%EC%9A%A9%ED%95%9C-%EC%84%A0%EC%B0%A9%EC%88%9C-%EC%BF%A0%ED%8F%B0-%EC%9D%B4%EB%B2%A4%ED%8A%B8-%EA%B0%9C%EB%B0%9C%EA%B8%B0-feat-%EB%84%A4%EA%B3%A0%EC%99%95-ec6682e39731)).
 - 아직 실험으로 검증하지 않은 판단입니다. [실험](../experiments/)에서 [쿠폰 Flow](../features/coupon/flows.md)의 Before 구현(`CountThenInsertIssuance`, `PessimisticLockIssuance`)과 `RedisFirstIssuance`를 같은 시나리오로 재서 이 ADR에 링크합니다.
 
 ## 감수하는 것

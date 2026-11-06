@@ -47,4 +47,4 @@ Risk마다 최소 한 번 깨뜨리고, 고치고, 다시 잽니다. 파일 이�
 
 ---
 
-[문서 지도](../README.md) | [README 결과 표](../../README.md#2-핵심-결과) | [ADR 목록](../adr/)
+[문서 지도](../README.md) | [README 결과 표](../../README.md#2-결과) | [ADR 목록](../adr/)

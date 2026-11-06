@@ -10,7 +10,7 @@
 - 지금: 3단계까지 설계 문서를 다 썼고, 아직 구현 전입니다.
 - 자세한 내용은 [문제 정의](docs/reference/problem.md)와 [유저 플로우](docs/reference/user-flows.md)에 있습니다.
 
-## 2. 핵심 결과
+## 2. 결과
 
 Risk ID는 기능 문서에서 정하고, 아직 측정 전입니다.
 

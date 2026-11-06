@@ -17,7 +17,7 @@ docs/
 3. [쿠폰 기능](features/coupon/): 1단계 시나리오와 Risk
 4. [ERD](reference/erd.md): 전체 테이블과 정합성을 지키는 방법
 5. [ADR](adr/): 왜 Redis로 발급을 결정하는지, 왜 모듈러 모놀리스인지
-6. [README 결과 표](../README.md#2-핵심-결과): Risk별 Before, After 수치
+6. [README 결과 표](../README.md#2-결과): Risk별 Before, After 수치
 
 ## reference: 전체 공통
 

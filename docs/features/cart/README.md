@@ -9,14 +9,6 @@
 | 상태 | 설계 완료, 구현 전 |
 | 관련 테이블 | `cart`, `cart_item` ([ERD](../../reference/erd.md#cart-cart_item-장바구니)). 읽기만: `product`, `product_stock`, `brand` |
 
-## 이 폴더의 문서
-
-| 문서 | 내용 |
-|---|---|
-| README.md (이 문서) | 시나리오, 장바구니 규칙, 허용하는 불일치 |
-| [flows.md](flows.md) | 담기·보기·수량 바꾸기·빼기의 시퀀스 다이어그램과 SQL |
-| [api.md](api.md) | 장바구니 엔드포인트, 요청·응답, 에러 코드 |
-
 ## Risk
 
 이 기능에는 Risk가 없습니다.

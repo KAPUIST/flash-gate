@@ -11,17 +11,9 @@
 | 소유 테이블 | [orders](../../reference/erd.md#orders-주문), [order_item](../../reference/erd.md#order_item-주문-상품), [order_coupon](../../reference/erd.md#order_coupon-주문에-쓴-쿠폰) |
 | 다른 모듈을 거쳐 바꾸는 테이블 | [product_stock](../../reference/erd.md#product_stock-재고) (상품), [member_coupon](../../reference/erd.md#member_coupon-회원-쿠폰) (쿠폰), [member_point, point_history](../../reference/erd.md#member_point-point_history-포인트) (포인트), [cart_item](../../reference/erd.md#cart-cart_item-장바구니) (장바구니) |
 
-## 이 폴더의 문서
-
-| 문서 | 내용 |
-|---|---|
-| README.md (이 문서) | 시나리오, Risk, 계산 규칙, 허용하는 불일치 |
-| [flows.md](flows.md) | 시퀀스 다이어그램, 트랜잭션 경계, 데드락, 일부러 깨뜨리는 첫 구현 |
-| [api.md](api.md) | 엔드포인트, 요청·응답, 에러 코드 |
-
 ## Risk
 
-Risk ID는 프로젝트 전체에서 이어서 매기고, 전체 결과는 [README 결과 표](../../../README.md#2-핵심-결과)에 모읍니다.
+전체 결과는 [README 결과 표](../../../README.md#2-결과)에 모읍니다.
 
 | ID | 깨지는 지점 | 시나리오 | 상태 | 근거 |
 |---|---|---|---|---|

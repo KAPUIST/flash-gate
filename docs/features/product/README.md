@@ -9,14 +9,6 @@
 | 상태 | 설계 완료, 구현 전 |
 | 관련 테이블 | `brand` ([ERD](../../reference/erd.md#brand-브랜드)), `product` ([ERD](../../reference/erd.md#product-상품)), `product_stock` ([ERD](../../reference/erd.md#product_stock-재고)) |
 
-## 이 폴더의 문서
-
-| 문서 | 내용 |
-|---|---|
-| README.md (이 문서) | 시나리오, 판매 상태 계산 규칙, 허용하는 불일치 |
-| [flows.md](flows.md) | 목록·상세 조회, 판매 상태 계산, 재고 차감·복구 |
-| [api.md](api.md) | 브랜드·상품 엔드포인트, 응답, 에러 코드 |
-
 ## Risk
 
 이 기능 자체의 시나리오(조회)에는 Risk가 없습니다.

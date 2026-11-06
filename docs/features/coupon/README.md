@@ -11,17 +11,9 @@
 | 관련 테이블 | [`coupon`](../../reference/erd.md#coupon-쿠폰), [`member_coupon`](../../reference/erd.md#member_coupon-회원-쿠폰), [`coupon_product`, `coupon_brand`](../../reference/erd.md#coupon_product-coupon_brand-상품-쿠폰의-대상) |
 | Redis 키 | `coupon:{id}:members`, `coupon:{id}:count` ([ERD](../../reference/erd.md#redis-키)) |
 
-## 이 폴더의 문서
-
-| 문서 | 내용 |
-|---|---|
-| README.md (이 문서) | 시나리오, Risk, 허용하는 불일치 |
-| [flows.md](flows.md) | 시퀀스 다이어그램, 확인 순서, 실패 시 처리, 일부러 깨뜨리는 첫 구현 |
-| [api.md](api.md) | 엔드포인트, 요청·응답, 에러 코드 |
-
 ## Risk
 
-Risk ID는 프로젝트 전체에서 이어서 매기고, 전체 결과는 [README 결과 표](../../../README.md#2-핵심-결과)에 모읍니다.
+전체 결과는 [README 결과 표](../../../README.md#2-결과)에 모읍니다.
 
 | ID | 깨지는 지점 | 시나리오 | 증명 방법 | 상태 | 근거 |
 |---|---|---|---|---|---|
