@@ -4,7 +4,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 단계 | 2단계 ([문제 정의](../../reference/problem.md#단계)) |
+| 단계 | 2단계 ([문제 정의](../../reference/problem.md#만드는-순서)) |
 | 코드 | `src/product/` (아직 없음) |
 | 상태 | 설계 완료, 구현 전 |
 | 관련 테이블 | `brand` ([ERD](../../reference/erd.md#brand-브랜드)), `product` ([ERD](../../reference/erd.md#product-상품)), `product_stock` ([ERD](../../reference/erd.md#product_stock-재고)) |

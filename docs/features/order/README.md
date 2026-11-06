@@ -5,7 +5,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 단계 | 2단계 ([문제 정의](../../reference/problem.md#단계)) |
+| 단계 | 2단계 ([문제 정의](../../reference/problem.md#만드는-순서)) |
 | 코드 | `src/order/` (아직 없음) |
 | 상태 | 설계 완료, 구현 전 |
 | 소유 테이블 | [orders](../../reference/erd.md#orders-주문), [order_item](../../reference/erd.md#order_item-주문-상품), [order_coupon](../../reference/erd.md#order_coupon-주문에-쓴-쿠폰) |

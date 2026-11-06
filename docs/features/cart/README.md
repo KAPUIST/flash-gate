@@ -4,7 +4,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 단계 | 2단계 ([문제 정의](../../reference/problem.md#단계)) |
+| 단계 | 2단계 ([문제 정의](../../reference/problem.md#만드는-순서)) |
 | 코드 | `src/cart/` (아직 없음) |
 | 상태 | 설계 완료, 구현 전 |
 | 관련 테이블 | `cart`, `cart_item` ([ERD](../../reference/erd.md#cart-cart_item-장바구니)). 읽기만: `product`, `product_stock`, `brand` |

@@ -5,7 +5,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 단계 | 1단계 (상품 쿠폰 대상 테이블은 2단계) ([문제 정의](../../reference/problem.md#단계)) |
+| 단계 | 1단계 (상품 쿠폰 대상 테이블은 2단계) ([문제 정의](../../reference/problem.md#만드는-순서)) |
 | 코드 | `src/coupon/` (아직 없음) |
 | 상태 | 설계 완료, 구현 전 |
 | 관련 테이블 | [`coupon`](../../reference/erd.md#coupon-쿠폰), [`member_coupon`](../../reference/erd.md#member_coupon-회원-쿠폰), [`coupon_product`, `coupon_brand`](../../reference/erd.md#coupon_product-coupon_brand-상품-쿠폰의-대상) |

@@ -4,7 +4,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 단계 | 2단계. 적립을 비동기로 바꾸는 것은 3단계 ([문제 정의](../../reference/problem.md#단계)) |
+| 단계 | 2단계. 적립을 비동기로 바꾸는 것은 3단계 ([문제 정의](../../reference/problem.md#만드는-순서)) |
 | 코드 | `src/point/` (아직 없음) |
 | 상태 | 설계 완료, 구현 전 |
 | 관련 테이블 | `member_point`, `point_history` ([ERD](../../reference/erd.md#member_point-point_history-포인트)) |

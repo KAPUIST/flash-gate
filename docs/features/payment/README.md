@@ -6,11 +6,11 @@
 
 | 항목 | 내용 |
 |---|---|
-| 단계 | 3단계 ([문제 정의](../../reference/problem.md#단계)) |
+| 단계 | 3단계 ([문제 정의](../../reference/problem.md#만드는-순서)) |
 | 코드 | `src/payment/` (아직 없음) |
 | 상태 | 설계 초안 |
 | 관련 테이블 | `orders` ([ERD](../../reference/erd.md#orders-주문)), `payment` (아래 [ERD 제안](#erd-제안-초안)) |
-| 관련 흐름 | [유저 플로우](../../reference/user-flows.md#결제-문서-3단계-초안) 결제 1~6 |
+| 관련 흐름 | [유저 플로우](../../reference/user-flows.md#결제-문서-초안) 결제 1~6 |
 
 ## 설계 방향: 먼저 잡아 두고, 나중에 결제한다
 
@@ -26,7 +26,7 @@
 - 플래시 세일은 재고가 몇 초 만에 바닥나서 대부분의 실패가 품절입니다. 그래서 품절을 결제 전에 걸러야 보상(승인 취소)이 드뭅니다.
 - 대가는 "결제하지 않은 주문이 20분 동안 재고를 붙잡는 것"입니다. 행사 상품이 결제하지 않는 주문에 묶여 있다가 늦게 풀릴 수 있습니다.
 
-## 주문 상태 (3단계 제안)
+## 주문 상태 (제안)
 
 2단계의 `ORDERED`, `CANCELED`, `CONFIRMED`에 결제 상태를 더합니다.
 
@@ -56,7 +56,7 @@ stateDiagram-v2
 | `CANCELED` | 결제 취소와 복구 완료 | 복구됨 |
 | `CONFIRMED` | 구매 확정. 취소할 수 없음 | 차감 확정 |
 
-- 모든 전이는 주문 모듈의 공개 서비스가 조건부 UPDATE 한 문장으로 해서, 두 요청이 겹쳐도 한쪽만 성공합니다. 예를 들어 `startPayment`는 `UPDATE orders SET status = 'PAYING' WHERE id = ? AND status = 'PAYMENT_PENDING'`를 실행합니다. 결제 모듈은 `orders`를 직접 바꾸지 않습니다 ([아래 표](#order-모듈에-필요한-공개-서비스-3단계-제안)).
+- 모든 전이는 주문 모듈의 공개 서비스가 조건부 UPDATE 한 문장으로 해서, 두 요청이 겹쳐도 한쪽만 성공합니다. 예를 들어 `startPayment`는 `UPDATE orders SET status = 'PAYING' WHERE id = ? AND status = 'PAYMENT_PENDING'`를 실행합니다. 결제 모듈은 `orders`를 직접 바꾸지 않습니다 ([아래 표](#order-모듈에-필요한-공개-서비스-제안)).
 - 20분 시간 초과 배치는 `PAYMENT_PENDING`만 건드리고, 이미 결제 요청을 보낸 `PAYING` 주문은 풀지 않습니다. 결제사가 승인했는데 재고를 풀어 버리는 경우를 막으려는 것입니다.
 - `CANCELING`은 결제 취소 중에 구매 확정이 끼어들지 못하게 하려고 둡니다. 결제 취소가 성공한 뒤 DB 처리가 실패해도, 이 상태가 "아직 끝나지 않은 취소"라는 표시로 남습니다.
 - 자동 구매 확정은 주문 7일 뒤에 하고, 3단계부터는 그 기준 시각이 결제 승인 시각(`payment.approved_at`)입니다.
@@ -151,7 +151,7 @@ stateDiagram-v2
 #### 허용하는 지연·불일치
 
 - 승인과 주문 상태가 `ORDERED`가 되는 순간 사이에 최대 수 분이 걸릴 수 있습니다.
-- 돈이 나갔는데 주문이 완료도 실패도 아닌 상태로 남은 건수는 보상 후 0이어야 합니다 ([목표 수치](../../reference/problem.md#3단계-결제와-포인트-초안)).
+- 돈이 나갔는데 주문이 완료도 실패도 아닌 상태로 남은 건수는 보상 후 0이어야 합니다 ([목표 수치](../../reference/problem.md#결제와-포인트-초안)).
 
 ---
 
@@ -169,7 +169,7 @@ stateDiagram-v2
 
 ---
 
-## order 모듈에 필요한 공개 서비스 (3단계 제안)
+## order 모듈에 필요한 공개 서비스 (제안)
 
 결제 모듈은 `orders`를 직접 바꾸지 않습니다. 주문 상태 전이와 재고·쿠폰·포인트 복구는 주문 모듈이 공개한 서비스로만 합니다 ([ADR-0002](../../adr/0002-modular-monolith-with-one-port.md)). 모든 메서드는 호출한 쪽의 트랜잭션에 참여합니다.
 모듈 의존은 결제에서 주문으로 가는 한 방향이고, 주문 모듈은 결제 모듈을 부르지 않습니다. 그래서 3단계부터 결제된 주문의 취소(`POST /orders/{orderId}/cancel`)는 결제 모듈의 유스케이스가 처리합니다.
@@ -221,7 +221,7 @@ stateDiagram-v2
 - `ix_payment_requested`: `(requested_at) WHERE status = 'REQUESTED'`. 결과 확인 배치(시나리오 4, 5)가 이 인덱스로 찾습니다.
 - Mock 결제라도 개인정보처럼 보이는 값을 남기지 않으려고, 결제 수단 정보(카드 번호 등)는 저장하지 않습니다.
 - 결제를 거절당한 주문은 다시 결제하지 않으므로 주문당 결제는 1건입니다. 다시 사려면 새 주문을 만듭니다.
-- 다시 시도할 일(승인 취소 재시도)은 [포인트 Flow의 outbox 제안](../point/flows.md#3단계-outbox와-워커로-비동기-적립)과 같은 `outbox_event` 테이블에 `PAYMENT_CANCEL_REQUESTED`로 넣습니다.
+- 다시 시도할 일(승인 취소 재시도)은 [포인트 Flow의 outbox 제안](../point/flows.md#결제를-붙인-뒤-outbox와-워커로-비동기-적립)과 같은 `outbox_event` 테이블에 `PAYMENT_CANCEL_REQUESTED`로 넣습니다.
 
 ---
 
