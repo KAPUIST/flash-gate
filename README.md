@@ -34,7 +34,7 @@ Risk는 기능 문서에서 정하고, 아직 측정 전입니다.
 ## 3. 기술 스택
 
 - Node.js 24, TypeScript 6, NestJS 12
-- PostgreSQL, Redis (버전은 docker compose 작성 시 확정)
+- PostgreSQL 18.6, Redis 8.10.3 (로컬은 docker compose)
 - TypeORM, `@nestjs-cls/transactional` (트랜잭션 전파)
 - Vitest (테스트), oxlint (린트), Prettier (포맷), dependency-cruiser (모듈 경계 검사, 도입 예정)
 - `@nestjs/event-emitter`, Kafka (모듈 사이 이벤트, 도입 예정. Kafka 버전은 붙일 때 확정)
@@ -92,11 +92,17 @@ flowchart LR
 ## 6. 실행 방법
 
 ```bash
-npm ci             # 의존성 설치
-npm run start:dev  # 개발 서버 (http://localhost:3000)
-npm run lint       # 린트 (타입 정보 기반 규칙 포함)
-npm test           # 단위 테스트
-npm run test:e2e   # e2e 테스트
+npm ci               # 의존성 설치
+cp .env.example .env # 로컬 설정 (처음 한 번)
+npm run infra:up     # PostgreSQL·Redis 띄우기 (healthy가 될 때까지 기다림)
+npm run start:dev    # 개발 서버 (http://localhost:3000)
+npm run lint         # 린트 (타입 정보 기반 규칙 포함)
+npm test             # 단위 테스트
+npm run test:e2e     # e2e 테스트
+npm run infra:down   # 컨테이너 내리기 (DB 데이터는 볼륨에 남음)
 ```
 
-DB, Redis, 부하 테스트 실행 방법은 도입할 때 추가합니다.
+- PostgreSQL은 15432, Redis는 16379 포트를 씁니다. 다른 로컬 컨테이너와 겹치지 않게 기본 포트를 피했습니다.
+- e2e 테스트는 `flashgate_test` DB를 씁니다. 볼륨이 비어 있을 때 처음 한 번 만들어집니다.
+- Redis는 디스크에 저장하지 않아서, 재시작하면 비어 있습니다. Redis 재시작 실험이 이 동작을 씁니다.
+- 부하 테스트 실행 방법은 도입할 때 추가합니다.
