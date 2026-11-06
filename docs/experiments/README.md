@@ -2,7 +2,7 @@
 
 Risk마다 최소 한 번 깨뜨리고, 고치고, 다시 잽니다. 파일 이름은 `E01-<실험-요약>.md` 형식입니다.
 
-| 번호 | 실험 | 관련 Risk | Before → After |
+| 번호 | 실험 | 관련 Risk | Before / After |
 |---|---|---|---|
 | - | 아직 없음 | | |
 
@@ -17,7 +17,7 @@ Risk마다 최소 한 번 깨뜨리고, 고치고, 다시 잽니다. 파일 이�
 | 3 | 쿠폰 발급 응답 시간 | R4 | `PessimisticLockIssuance` / `RedisFirstIssuance` ([ADR-0001](../adr/0001-redis-decides-coupon-issue.md) 검증) | 3,000 RPS에서 p99, 5xx 수 | 1 |
 | 4 | 중간 실패와 Redis 재시작 | R3, R5 | 저장 직전 서버 종료, Redis 재시작 후 복구 있음·없음 | Redis 수 − 회원 쿠폰 수, 초과 발급 수 | 1 |
 | 5 | Lua로 명령 묶기 | R3, R4 | SADD + INCR 두 번 / Lua 한 번 | 처리량, 어긋남 수. 참고 사례의 "Lua 약 21% 느림" 확인 | 1 |
-| 6 | 재고 초과 판매 | R6 | `findOne` → `save` (Before) / 조건부 UPDATE / 비관적 락 / 낙관적 락 + 재시도 / Redis | 판매 수량 − 처음 재고, p99, 재시도 수 | 2 |
+| 6 | 재고 초과 판매 | R6 | `findOne` 후 `save` (Before) / 조건부 UPDATE / 비관적 락 / 낙관적 락 + 재시도 / Redis | 판매 수량 − 처음 재고, p99, 재시도 수 | 2 |
 | 7 | 여러 상품 주문 데드락 | R8 | 상품 순서 그대로 잠금 (Before) / 상품 ID 순서로 잠금 | 데드락 에러 수 | 2 |
 | 8 | 쿠폰 이중 사용 | R7 | 읽고 나서 UPDATE (Before) / 조건부 UPDATE | 취소되지 않은 주문 두 개에 쓰인 회원 쿠폰 수 | 2 |
 | 9 | 같은 멱등 키 동시 요청 | R10 | 키 확인 후 INSERT (Before) / UNIQUE 제약 | 같은 키의 주문 수 | 2 |
@@ -47,4 +47,4 @@ Risk마다 최소 한 번 깨뜨리고, 고치고, 다시 잽니다. 파일 이�
 
 ---
 
-[← 문서 지도](../README.md) | [README 핵심 결과](../../README.md#2-핵심-결과) | [ADR 목록](../adr/)
+[문서 지도](../README.md) | [README 결과 표](../../README.md#2-핵심-결과) | [ADR 목록](../adr/)

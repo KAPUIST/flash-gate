@@ -14,7 +14,7 @@
 
 ## POST /me/cart/items
 
-**요청**
+#### 요청
 
 | 위치 | 이름 | 타입 | 필수 | 설명 |
 |---|---|---|---|---|
@@ -25,16 +25,16 @@
 { "productId": 101, "quantity": 2 }
 ```
 
-**응답 201 (새 항목) / 200 (이미 담긴 상품의 수량을 늘림)**
+#### 응답 201 (새 항목) / 200 (이미 담긴 상품의 수량을 늘림)
 
 ```json
 { "cartItemId": 5001, "productId": 101, "quantity": 5 }
 ```
 
-- `quantity`는 담은 뒤의 수량입니다. 이미 3개 담긴 상품을 2개 더 담으면 5입니다.
+- `quantity`는 담은 뒤의 수량이라, 이미 3개 담긴 상품을 2개 더 담으면 5입니다.
 - 새 장바구니 항목이 생기면 201, 이미 담긴 상품의 수량만 늘었으면 200입니다 ([HTTP 상태 코드](../../reference/api.md#http-상태-코드)).
 
-**에러**
+#### 에러
 
 | HTTP | 코드 | 상황 |
 |---|---|---|
@@ -50,9 +50,9 @@
 
 ## GET /me/cart
 
-**요청**: 없음.
+요청: 없습니다.
 
-**응답 200**
+#### 응답 200
 
 ```json
 {
@@ -87,17 +87,17 @@
 }
 ```
 
-- 최근 담은 순입니다. 최대 100종이라 페이지가 없습니다.
-- `unitPrice`는 지금 가격입니다. `amount = unitPrice × quantity`입니다.
-- `saleStatus`: `ON_SALE`, `SOLD_OUT`, `STOPPED` ([상품 README](../product/README.md#판매-상태)).
+- 최근 담은 순이고, 최대 100종이라 페이지가 없습니다.
+- `unitPrice`는 지금 가격이고, `amount = unitPrice × quantity`입니다.
+- `saleStatus`는 `ON_SALE`, `SOLD_OUT`, `STOPPED` 가운데 하나입니다 ([상품 README](../product/README.md#판매-상태)).
 - `totalAmount`와 `onSaleItemCount`는 `ON_SALE` 항목만 셉니다.
 - 장바구니가 없거나 비었으면 `{ "items": [], "totalAmount": 0, "onSaleItemCount": 0 }`입니다.
 
-**에러**: 공통 401 외에 없음.
+에러: 공통 401 외에는 없습니다.
 
 ## PATCH /me/cart/items/{cartItemId}
 
-**요청**
+#### 요청
 
 | 위치 | 이름 | 타입 | 필수 | 설명 |
 |---|---|---|---|---|
@@ -108,17 +108,17 @@
 { "quantity": 3 }
 ```
 
-**응답 200**
+#### 응답 200
 
 ```json
 { "cartItemId": 5001, "quantity": 3 }
 ```
 
-**에러**
+#### 에러
 
 | HTTP | 코드 | 상황 |
 |---|---|---|
-| 400 | COMMON_INVALID_REQUEST | `quantity`가 1~99 밖. 0으로 만들려면 빼기를 쓴다 |
+| 400 | COMMON_INVALID_REQUEST | `quantity`가 1~99 밖. 0으로 만들려면 빼기를 씁니다 |
 | 404 | CART_ITEM_NOT_FOUND | 없는 항목, 다른 회원의 항목 |
 
 ```json
@@ -127,18 +127,20 @@
 
 ## DELETE /me/cart/items
 
-**요청**
+#### 요청
 
 | 위치 | 이름 | 타입 | 필수 | 설명 |
 |---|---|---|---|---|
 | query | ids | string | O | 뺄 장바구니 항목 ID를 쉼표로 이은 값. 1~100개. 예: `ids=5000,5001` |
 
-**응답 204**: 본문 없음.
+#### 응답 204
 
-- 없는 항목, 이미 빠진 항목, 다른 회원의 항목은 무시합니다. 에러가 아닙니다.
+본문이 없습니다.
+
+- 없는 항목, 이미 빠진 항목, 다른 회원의 항목은 에러 없이 무시합니다.
 - 같은 요청을 다시 보내도 결과가 같습니다.
 
-**에러**
+#### 에러
 
 | HTTP | 코드 | 상황 |
 |---|---|---|
@@ -146,4 +148,4 @@
 
 ---
 
-[← 이전: Flow](flows.md) | [문서 지도](../../README.md)
+[이전: Flow](flows.md) | [문서 지도](../../README.md)

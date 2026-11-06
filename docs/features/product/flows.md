@@ -11,7 +11,7 @@ FROM brand
 ORDER BY name;
 ```
 
-브랜드는 수가 적고 지우지 않습니다. 페이지 없이 전체를 한 번에 줍니다.
+브랜드는 수가 적고 지우지 않아서, 페이지 없이 전체를 한 번에 줍니다.
 
 ## 시나리오 2, 3. 상품 목록·상세 보기
 
@@ -59,7 +59,7 @@ LIMIT :size + 1;
 ```
 
 - `size + 1`개를 읽어서, 하나가 더 있으면 다음 페이지가 있다고 판단합니다. `nextCursor`는 마지막으로 응답한 상품 ID를 감싼 불투명한 문자열입니다.
-- `deleted_at IS NULL`을 직접 적습니다. 직접 쓴 SQL에는 TypeORM의 soft delete 필터가 붙지 않습니다 ([ERD 삭제 정책](../../reference/erd.md#삭제-정책)).
+- 직접 쓴 SQL에는 TypeORM의 soft delete 필터가 붙지 않아서 `deleted_at IS NULL`을 직접 적습니다 ([ERD 삭제 정책](../../reference/erd.md#삭제-정책)).
 - 브랜드로 거를 때는 `ix_product_brand_id`를 씁니다.
 - `stock_quantity`는 판매 상태 계산에만 쓰고 응답에 넣지 않습니다.
 - 재고 행은 주문이 몰릴 때 계속 잠기지만, PostgreSQL의 일반 SELECT는 행 잠금을 기다리지 않습니다. 그래서 상품 조회는 주문과 부딪히지 않습니다.
@@ -77,7 +77,7 @@ flowchart TD
     stock -- 아니오 --> onsale["ON_SALE (판매 중)"]
 ```
 
-이 계산은 `src/product/domain/`의 순수 함수 하나에 둡니다. 장바구니 보기도 같은 함수를 씁니다.
+이 계산은 `src/product/domain/`의 순수 함수 하나에 두고, 장바구니 보기도 같은 함수를 씁니다.
 
 ## 재고 차감과 복구 (다른 모듈이 부름)
 
@@ -111,8 +111,8 @@ sequenceDiagram
 ```
 
 - 조건부 UPDATE 한 문장이라 읽고 나서 쓰는 틈이 없습니다. 기다리던 UPDATE는 잠금을 얻은 뒤 조건을 다시 확인합니다 (PostgreSQL READ COMMITTED). `ck_product_stock_quantity`(≥ 0)가 마지막 방어선입니다.
-- `findOne` → `save()`로 재고를 바꾸는 구현은 실험의 Before로만 씁니다 ([실험 계획](../../experiments/)).
+- `findOne`에 이어 `save()`로 재고를 바꾸는 구현은 실험의 Before로만 씁니다 ([실험 계획](../../experiments/)).
 
 ---
 
-[← 이전: 상품](README.md) | [문서 지도](../../README.md) | [다음: API →](api.md)
+[이전: 상품](README.md) | [문서 지도](../../README.md) | [다음: API](api.md)
