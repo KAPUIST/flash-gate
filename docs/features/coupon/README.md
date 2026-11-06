@@ -1,7 +1,7 @@
 # 쿠폰 (coupon)
 
 행사 시작 직후 요청이 몰려도 한정 수량 쿠폰을 정해진 수량만큼만 발급합니다.
-발급 결정은 Redis가 하고, DB는 회원 쿠폰을 기록합니다 ([ADR-0001](../../adr/0001-redis-decides-coupon-issue.md)).
+발급 결정은 Redis가 하고, DB는 회원 쿠폰을 기록합니다 ([Redis가 쿠폰 발급을 결정](../../adr/0001-redis-decides-coupon-issue.md)).
 
 | 항목 | 내용 |
 |---|---|
@@ -151,8 +151,8 @@ Redis가 재시작됐거나 수량이 어긋났을 때 합니다.
 
 | 종류 | 문서 | 관련 Risk |
 |---|---|---|
-| ADR | [ADR-0001: 쿠폰 발급은 Redis가 결정하고, DB는 기록만 한다](../../adr/0001-redis-decides-coupon-issue.md) | 초과 발급, 발급 수 불일치, 발급 지연·에러, Redis 재시작 |
-| ADR | [ADR-0002: 모듈러 모놀리스로 만들고, 포트는 발급 전략 하나만 둔다](../../adr/0002-modular-monolith-with-one-port.md) | |
+| 결정 | [쿠폰 발급은 Redis가 결정하고, DB는 기록만 한다](../../adr/0001-redis-decides-coupon-issue.md) | 초과 발급, 발급 수 불일치, 발급 지연·에러, Redis 재시작 |
+| 결정 | [모듈러 모놀리스로 만들고, 포트는 발급 전략 하나만 둔다](../../adr/0002-modular-monolith-with-one-port.md) | |
 | 실험 | 아직 없습니다. 쿠폰 초과 발급 재현과 해결 실험에서 [일부러 깨뜨리는 첫 구현](flows.md#일부러-깨뜨리는-첫-구현-before)과 여러 발급 전략을 같은 시나리오로 잴 예정입니다 | 초과 발급, 발급 수 불일치, 발급 지연·에러 |
 
 ---

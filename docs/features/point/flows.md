@@ -131,7 +131,7 @@ sequenceDiagram
 관련 Risk: 포인트 적립 누락, 포인트 이중 적립
 
 주문 모듈은 확정만 하고 구매 확정됨(`ORDER_CONFIRMED`) 이벤트를 발행합니다. 포인트 모듈의 구독자가 그 이벤트를 받아 적립합니다.
-전달 방식은 [ADR-0003](../../adr/0003-module-reactions-through-events.md) 순서대로 프로세스 안, outbox, Kafka로 바꾸고, 발행 코드와 구독자 코드는 그대로 둡니다.
+전달 방식은 [모듈 사이 반응은 이벤트로](../../adr/0003-module-reactions-through-events.md) 순서대로 프로세스 안, outbox, Kafka로 바꾸고, 발행 코드와 구독자 코드는 그대로 둡니다.
 
 ### 확정과 발행
 

@@ -27,7 +27,7 @@ flowchart LR
 | 1 | 로그인: member 마이그레이션, 회원 10만 명 시드(같은 비밀번호 해시), JWT 발급, 인증 가드 | [인증](../features/auth/)의 로그인, 로그인 실패, 토큰 검사 시나리오 | 시나리오의 모든 분기가 e2e로 통과합니다 |
 | 2 | 행사 쿠폰 목록: coupon·member_coupon 마이그레이션, 쿠폰 시드(도메인 클래스 경유), 할인 도메인 클래스 | [쿠폰](../features/coupon/)의 [행사 쿠폰 목록 보기](../features/coupon/README.md#시나리오-1-행사-쿠폰-목록-보기), [ERD](erd.md) | `FixedDiscount`, `RateDiscount` 경계값 단위 테스트. 목록 e2e |
 | 3 | 쿠폰 발급 (Before): `IssuanceStrategy` 포트, 일부러 깨지는 첫 구현, 확인 순서(없음, 중단, 기간, 중복, 소진 순) | [쿠폰 Flow](../features/coupon/flows.md) | 분기별 e2e 통과. 동시성 테스트로 초과 발급이 재현됩니다 |
-| 4 | 쿠폰 발급 (Redis): `RedisFirstIssuance`, 실패 보상(SREM·DECR), UNIQUE 위반 처리 | [ADR-0001](../adr/0001-redis-decides-coupon-issue.md) | 같은 계약 테스트를 두 구현이 통과합니다. 동시성 테스트: 초과 발급 0, 같은 회원 50건 동시 요청이 201 1건 + 409 49건 (같은 회원 중복 요청) |
+| 4 | 쿠폰 발급 (Redis): `RedisFirstIssuance`, 실패 보상(SREM·DECR), UNIQUE 위반 처리 | [Redis가 쿠폰 발급을 결정](../adr/0001-redis-decides-coupon-issue.md) | 같은 계약 테스트를 두 구현이 통과합니다. 동시성 테스트: 초과 발급 0, 같은 회원 50건 동시 요청이 201 1건 + 409 49건 (같은 회원 중복 요청) |
 | 5 | 회원 쿠폰 목록: 사용 가능·사용함·만료 계산, 커서 페이지 | 쿠폰의 [회원 쿠폰 목록 보기](../features/coupon/README.md#시나리오-3-회원-쿠폰-목록-보기) | e2e |
 | 6 | 발급 준비·복구: 발급 시작 전 Redis 채우기, DB 기준 복구 명령 | 쿠폰의 [발급 준비와 Redis 복구](../features/coupon/README.md#시나리오-4-시스템-발급-준비와-redis-복구) | Redis를 비운 뒤 복구하면 Redis 수 = 회원 쿠폰 수 |
 | 7 | 쿠폰 발급 부하 실험(로컬 기준선부터 Lua로 명령 묶기까지): k6 스크립트(토큰 미리 받기), 기준선, 초과 발급, 발급 수 불일치, 발급 지연·에러, Redis 재시작 측정과 기록 | [실험 계획](../experiments/) | 실험 문서와 README 결과 표에 Before, After 수치 기록 |

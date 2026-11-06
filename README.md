@@ -42,9 +42,9 @@ Risk는 기능 문서에서 정하고, 아직 측정 전입니다.
 
 ## 4. 아키텍처
 
-모듈러 모놀리스로 만듭니다. 모듈끼리는 공개 서비스를 함수로 호출하고, 다른 모듈의 테이블은 직접 쓰지 않습니다 ([ADR-0002](docs/adr/0002-modular-monolith-with-one-port.md)).
+모듈러 모놀리스로 만듭니다. 모듈끼리는 공개 서비스를 함수로 호출하고, 다른 모듈의 테이블은 직접 쓰지 않습니다 ([모듈러 모놀리스와 포트 기준](docs/adr/0002-modular-monolith-with-one-port.md)).
 결과가 필요한 일은 함수로 부르고, 일어난 일에 다른 모듈이 반응하는 일은 이벤트로 보냅니다. 이벤트 전달은 프로세스 안에서 outbox, Kafka 순서로 바꿉니다 ([모듈 사이 반응은 이벤트로](docs/adr/0003-module-reactions-through-events.md)).
-쿠폰 발급은 Redis가 결정하고 DB는 기록만 합니다 ([ADR-0001](docs/adr/0001-redis-decides-coupon-issue.md)). 아직 DB와 Redis는 연결하지 않았습니다.
+쿠폰 발급은 Redis가 결정하고 DB는 기록만 합니다 ([Redis가 쿠폰 발급을 결정](docs/adr/0001-redis-decides-coupon-issue.md)). 아직 DB와 Redis는 연결하지 않았습니다.
 
 ```mermaid
 flowchart LR

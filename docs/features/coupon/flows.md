@@ -171,13 +171,13 @@ sequenceDiagram
 
 ## 일부러 깨뜨리는 첫 구현 (Before)
 
-발급 방식은 `IssuanceStrategy` 포트 뒤에 둡니다 ([ADR-0002](../../adr/0002-modular-monolith-with-one-port.md)). 환경 변수 `ISSUANCE_STRATEGY` 하나로 바꿔 끼우고, 같은 k6 시나리오로 잽니다.
+발급 방식은 `IssuanceStrategy` 포트 뒤에 둡니다 ([모듈러 모놀리스와 포트 기준](../../adr/0002-modular-monolith-with-one-port.md)). 환경 변수 `ISSUANCE_STRATEGY` 하나로 바꿔 끼우고, 같은 k6 시나리오로 잽니다.
 
 | 구현 | 방식 | 예상 | 역할 |
 |---|---|---|---|
 | `CountThenInsertIssuance` | `SELECT COUNT(*)`로 남은 수량을 확인하고, 잠금 없이 INSERT | 동시 요청이 같은 COUNT를 읽어 초과 발급 (초과 발급 재현) | Before. 일부러 깨뜨린 구현 |
 | `PessimisticLockIssuance` | 트랜잭션 안에서 `SELECT ... FROM coupon WHERE id = ? FOR UPDATE`, COUNT, INSERT 순서로 실행 | 초과 발급은 0. 모든 요청이 쿠폰 행 잠금을 기다려 p99가 느림 (발급 지연·에러 비교 대상) | DB만으로 맞게 만든 기준선 |
-| `RedisFirstIssuance` | 이 문서의 [쿠폰 발급받기](#시나리오-2-쿠폰-발급받기) 흐름 (SADD, INCR, INSERT 순서) | 초과 발급 0, 소진 요청이 DB에 가지 않음 | 채택한 구현 ([ADR-0001](../../adr/0001-redis-decides-coupon-issue.md)) |
+| `RedisFirstIssuance` | 이 문서의 [쿠폰 발급받기](#시나리오-2-쿠폰-발급받기) 흐름 (SADD, INCR, INSERT 순서) | 초과 발급 0, 소진 요청이 DB에 가지 않음 | 채택한 구현 ([Redis가 쿠폰 발급을 결정](../../adr/0001-redis-decides-coupon-issue.md)) |
 
 - `findOne`, 값 변경, `save()` 순서로 수량 컬럼을 깎는 고전적인 갱신 손실 구현은 쓰지 않습니다. 발급 수 컬럼(`issued_quantity`)을 두지 않기로 해서 깎을 컬럼이 없고, 같은 "읽고 나서 쓰기" 문제는 `CountThenInsertIssuance`로 재현합니다.
 - DB만 쓰는 조건부 UPDATE(`WHERE issued_quantity < total_quantity`)도 같은 이유로 비교 대상에서 뺐습니다. 카운터 컬럼 없이 DB만으로 맞게 하는 방법은 쿠폰 행 잠금입니다.

@@ -423,7 +423,7 @@ erDiagram
 | `orders`의 금액 합계 | 주문 목록에서 주문 상품을 다 읽지 않습니다 | 도메인 클래스 검사 + 테스트 (금액 불일치) |
 | `order_coupon.discount_amount` | 할인 조건이 나중에 바뀌어도 이 주문에서 깎인 금액은 그대로여야 합니다 | 복사한 뒤 바꾸지 않습니다. 발급 시작 뒤 조건 변경 금지 |
 | `member_point.balance`, `point_history.balance_after` | 잔액을 볼 때마다 내역 전체를 더하지 않습니다 | 같은 트랜잭션에서 함께 변경 + `balance = SUM(amount)` 테스트 |
-| Redis 발급 수와 회원 쿠폰 수 | 발급 결정을 DB 앞에서 합니다 ([ADR-0001](../adr/0001-redis-decides-coupon-issue.md)) | DB 기준 복구. 어긋나면 DB가 맞습니다 (발급 수 불일치, Redis 재시작) |
+| Redis 발급 수와 회원 쿠폰 수 | 발급 결정을 DB 앞에서 합니다 ([Redis가 쿠폰 발급을 결정](../adr/0001-redis-decides-coupon-issue.md)) | DB 기준 복구. 어긋나면 DB가 맞습니다 (발급 수 불일치, Redis 재시작) |
 
 ## 상태 값과 전이
 
@@ -480,7 +480,7 @@ stateDiagram-v2
 
 ## Redis 키
 
-DB가 기준이고, Redis는 언제든 DB에서 다시 만들 수 있어야 합니다 ([ADR-0001](../adr/0001-redis-decides-coupon-issue.md)).
+DB가 기준이고, Redis는 언제든 DB에서 다시 만들 수 있어야 합니다 ([Redis가 쿠폰 발급을 결정](../adr/0001-redis-decides-coupon-issue.md)).
 
 | 키 | 타입 | 뜻 | 복구 방법 |
 |---|---|---|---|
@@ -489,7 +489,7 @@ DB가 기준이고, Redis는 언제든 DB에서 다시 만들 수 있어야 합�
 
 ## 테이블을 쓰는 기능
 
-테이블은 소유 모듈만 직접 읽고 씁니다. 다른 모듈은 소유 모듈이 공개한 서비스를 함수로 호출합니다 ([ADR-0002](../adr/0002-modular-monolith-with-one-port.md)).
+테이블은 소유 모듈만 직접 읽고 씁니다. 다른 모듈은 소유 모듈이 공개한 서비스를 함수로 호출합니다 ([모듈러 모놀리스와 포트 기준](../adr/0002-modular-monolith-with-one-port.md)).
 
 | 테이블 | 소유 모듈 | 쓰는 기능 |
 |---|---|---|
