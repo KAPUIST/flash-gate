@@ -19,7 +19,8 @@
 ## 이 API가 응답하는 에러 코드
 
 주문 API는 주문 모듈이 판단한 실패를 `ORDER_` 코드로 응답합니다. 쿠폰을 쓸 수 없는 이유는 주문 모듈이 쿠폰 모듈의 결과를 보고 판단하므로 `ORDER_COUPON_UNAVAILABLE` 하나로 응답합니다.
-포인트는 예외입니다. 포인트 규칙과 잔액은 포인트 모듈만 알아서 포인트 모듈이 낸 코드(`POINT_BELOW_MINIMUM_USE`, `POINT_EXCEEDS_LIMIT`, `POINT_INSUFFICIENT`)를 그대로 응답합니다.
+포인트는 예외입니다. 포인트 규칙과 잔액은 포인트 모듈만 알아서 포인트 모듈이 낸 코드(`POINT_BELOW_MINIMUM_USE`, `POINT_EXCEEDS_LIMIT`, `POINT_INSUFFICIENT`)를 그대로 응답합니다. 규칙 값은 [포인트 규칙](../point/README.md#규칙)에 있습니다.
+여러 에러에 걸리면 [트랜잭션 전 검사 순서](flows.md#트랜잭션-전-검사-순서)에서 먼저 걸린 에러로 응답합니다.
 `ORDER_OUT_OF_STOCK`과 `ORDER_PRODUCT_UNAVAILABLE`은 `details.productIds`에 해당 상품 ID를 담습니다 ([에러 응답 형식](../../reference/api.md#에러-응답-형식)).
 
 | HTTP | 코드 | 상황 | 관련 Risk |
@@ -33,8 +34,8 @@
 | 409 | `ORDER_PRODUCT_UNAVAILABLE` | 판매 중지되었거나 삭제된 상품이 있음 | |
 | 409 | `ORDER_OUT_OF_STOCK` | 재고가 모자란 상품이 있음 | 초과 판매 |
 | 409 | `ORDER_COUPON_UNAVAILABLE` | 고른 쿠폰을 쓸 수 없음 (이미 사용, 만료, 대상 아님, 최소 주문 금액 미달, 다른 회원의 쿠폰, 쿠폰 종류가 맞지 않음) | 쿠폰 이중 사용 |
-| 409 | `POINT_BELOW_MINIMUM_USE` | 쓸 포인트가 5,000 미만 (포인트 모듈이 냄) | |
-| 409 | `POINT_EXCEEDS_LIMIT` | 쓸 포인트가 쿠폰 할인 뒤 금액의 10%를 넘음 (포인트 모듈이 냄) | |
+| 409 | `POINT_BELOW_MINIMUM_USE` | 쓸 포인트가 최소 사용보다 작음 (포인트 모듈이 냄) | |
+| 409 | `POINT_EXCEEDS_LIMIT` | 쓸 포인트가 최대 사용을 넘음 (포인트 모듈이 냄) | |
 | 409 | `POINT_INSUFFICIENT` | 포인트 잔액 부족 (포인트 모듈이 냄) | 포인트 이중 사용 |
 | 409 | `ORDER_NOT_CANCELABLE` | 이미 취소되었거나 구매 확정된 주문 | |
 | 409 | `ORDER_NOT_CONFIRMABLE` | 이미 취소되었거나 구매 확정된 주문 | |
@@ -155,9 +156,9 @@
 |---|---|
 | `orderable` | 모든 상품을 주문할 수 있으면 `true` |
 | `items[].unavailableReason` | `OUT_OF_STOCK`(품절), `STOPPED`(판매 중지), `DELETED`(삭제), 또는 `null` |
-| `selectedCoupons[].reason` | `EXPIRED`, `ALREADY_USED`, `NOT_TARGET`, `MIN_ORDER_AMOUNT_NOT_MET`, `NOT_OWNED`, `SCOPE_MISMATCH`, 또는 `null` |
-| `point.reason` | `BELOW_MINIMUM`(5,000 미만), `OVER_LIMIT`(10% 초과), `INSUFFICIENT_BALANCE`(잔액 부족), `NOT_AVAILABLE`(쿠폰 할인 뒤 금액이 50,000원 미만이라 쓸 수 없음), 또는 `null` |
-| `point.maxUsable` | min(쿠폰 할인 뒤 금액의 10% 버림, 잔액). 5,000 미만이면 0 |
+| `selectedCoupons[].reason` | `EXPIRED`, `ALREADY_USED`, `NOT_TARGET`, `MIN_ORDER_AMOUNT_NOT_MET`, `NOT_OWNED`, `SCOPE_MISMATCH`, 또는 `null`. `EXPIRED`, `ALREADY_USED`, `NOT_OWNED`는 쿠폰 모듈 `getMemberCoupons` 결과로 정함 ([Flow](flows.md#시나리오-1-2-주문서-보기와-금액-미리-보기)) |
+| `point.reason` | `BELOW_MINIMUM`(최소 사용 미만), `OVER_LIMIT`(최대 사용 초과), `INSUFFICIENT_BALANCE`(잔액 부족), `NOT_AVAILABLE`(최대 사용이 최소 사용보다 작음), 또는 `null` |
+| `point.maxUsable` | 포인트 모듈 `calculateUsableAmount`의 결과. 계산은 [포인트 규칙](../point/README.md#규칙)을 따름 |
 | `expectedDiscountAmount` | 그 쿠폰만 골랐을 때의 할인. 주문 쿠폰은 지금 고른 상품 쿠폰을 적용한 뒤 기준 |
 
 #### 에러
@@ -178,7 +179,7 @@
 | 위치 | 이름 | 필수 | 설명 |
 |---|---|---|---|
 | header | Idempotency-Key | O | 주문서를 열 때 클라이언트가 만든 키. 같은 키로 다시 보내면 처음 주문을 응답 |
-| body | items 또는 cartItemIds | O | 미리 보기와 같음. `cartItemIds`면 주문 뒤 그 장바구니 항목을 지움 |
+| body | items 또는 cartItemIds | O | 미리 보기와 같음. `cartItemIds`면 주문 뒤 장바구니 모듈이 주문됨 이벤트를 받아 그 항목을 지움 |
 | body | productCoupons | | 미리 보기와 같음 |
 | body | orderMemberCouponId | | 미리 보기와 같음 |
 | body | pointAmount | | 미리 보기와 같음 |
@@ -205,6 +206,7 @@ Content-Type: application/json
 응답 201: [주문 상세](#get-ordersorderid)와 같은 본문입니다. `status`는 `ORDERED`입니다.
 
 같은 키로 다시 보낸 경우 응답 200: 처음 주문과 같은 본문에 `Idempotent-Replayed: true` 헤더를 붙입니다. 이번 요청으로 새 주문이 생기지 않아서 201이 아니라 200으로 응답하고, 그래서 부하 테스트에서 재전송을 따로 셀 수 있습니다.
+동시에 온 두 번째 요청이 품절이나 쓸 수 없는 쿠폰으로 실패해도, 그 사이 같은 키의 처음 주문이 커밋됐으면 409 대신 이 200으로 응답합니다 ([Flow](flows.md#시나리오-4-같은-주문을-두-번-보냄)).
 
 #### 에러
 
@@ -218,12 +220,12 @@ Content-Type: application/json
 | 409 | `ORDER_PRODUCT_UNAVAILABLE` | 판매 중지·삭제된 상품 | |
 | 409 | `ORDER_OUT_OF_STOCK` | 재고 부족 | 초과 판매 |
 | 409 | `ORDER_COUPON_UNAVAILABLE` | 고른 쿠폰을 쓸 수 없음 | 쿠폰 이중 사용 |
-| 409 | `POINT_BELOW_MINIMUM_USE` / `POINT_EXCEEDS_LIMIT` | 포인트 5,000 미만 또는 한도 초과 | |
+| 409 | `POINT_BELOW_MINIMUM_USE` / `POINT_EXCEEDS_LIMIT` | 포인트가 최소 사용보다 작거나 최대 사용을 넘음 | |
 | 409 | `POINT_INSUFFICIENT` | 포인트 잔액 부족 | 포인트 이중 사용 |
 | 503 | `ORDER_RETRY` | 일시적 DB 실패(데드락, 잠금 대기 시간 초과, 연결 오류 등) | 주문 데드락 |
 | 500 | `COMMON_INTERNAL_ERROR` | 금액 합계 불일치 (버그, 0건이 목표) | 금액 불일치 |
 
-409와 503이면 아무것도 저장되지 않아서, 같은 키로 다시 보내면 새로 처리합니다.
+409와 503이면 이번 요청으로 저장된 것이 없어서, 같은 키로 다시 보내면 새로 처리합니다.
 
 ## GET /me/orders
 
@@ -322,7 +324,8 @@ Content-Type: application/json
 ```
 
 - `coupons[].orderItemId`가 `null`이면 주문 쿠폰입니다.
-- `earnedPointAmount`는 구매 확정으로 쌓인 포인트이고, 확정 전이면 `null`입니다. 결제를 붙인 뒤에는 확정 직후 몇 초 동안 `null`일 수 있습니다.
+- `earnedPointAmount`는 구매 확정으로 쌓인 포인트이고, 포인트 모듈의 `getEarnedAmount(orderId)`로 읽습니다.
+- 확정 전이면 `null`입니다. 적립은 확정 몇 초 뒤 포인트 구독자가 해서, 확정 직후에도 `null`일 수 있습니다. 적립액이 0이라 적립하지 않은 주문도 `null`입니다.
 
 #### 에러
 
@@ -348,9 +351,10 @@ Content-Type: application/json
 
 ## POST /orders/{orderId}/confirm
 
-구매 확정이고 본문은 없습니다. 결제를 붙이기 전에는 같은 트랜잭션에서 결제 금액의 5%(원 미만 버림)를 포인트로 쌓습니다.
+구매 확정이고 본문은 없습니다. 주문을 확정하고 구매 확정됨(`ORDER_CONFIRMED`) 이벤트를 발행합니다. 적립은 포인트 모듈의 구독자가 [적립 규칙](../point/README.md#규칙)대로 합니다.
 
-응답 200: [주문 상세](#get-ordersorderid)와 같은 본문입니다. `status`는 `CONFIRMED`이고 `confirmedAt`과 `earnedPointAmount`가 채워집니다. 결제를 붙인 뒤에는 `earnedPointAmount`가 잠깐 `null`일 수 있습니다.
+응답 200: [주문 상세](#get-ordersorderid)와 같은 본문입니다. `status`는 `CONFIRMED`이고 `confirmedAt`이 채워집니다.
+응답은 적립을 기다리지 않습니다. 그래서 확정 직후 `earnedPointAmount`는 `null`일 수 있고, 몇 초 뒤 주문 상세를 다시 읽으면 채워집니다.
 
 #### 에러
 

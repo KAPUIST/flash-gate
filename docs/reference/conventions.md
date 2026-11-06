@@ -50,25 +50,25 @@ npm run build      # 빌드
 
 ### ADR
 
-되돌리기 어렵고 다른 선택지와 비교해서 고른 결정만 씁니다. 수량을 Redis로 관리할지 DB로 관리할지 같은 결정입니다. 익숙한 도구를 고른 것처럼 비교가 없었던 결정은 쓰지 않습니다. 파일 이름은 `0001-<결정-요약>.md` 형식입니다.
+되돌리기 어렵고 다른 선택지와 비교해서 고른 결정만 씁니다. 수량을 Redis로 관리할지 DB로 관리할지 같은 결정입니다. 익숙한 도구를 고른 것처럼 비교가 없었던 결정은 쓰지 않습니다. 파일 이름은 `0001-<결정-요약>.md` 형식이고, 번호는 파일 순서에만 씁니다. 제목과 다른 문서의 링크에는 번호 대신 결정 내용을 씁니다.
 
 ```markdown
-# ADR-000N: <결정 제목>
+# <결정 제목>
 
-- 상태: 제안 / 채택 / 폐기 / ADR-000M으로 대체
+- 상태: 제안 / 채택 / 폐기 / <다른 결정>으로 대체
 - 날짜: YYYY-MM-DD
 - 관련 Risk: 초과 발급
 
 ### 실험 기록
 
-실험 하나에 파일 하나를 `docs/experiments/`에 둡니다. 파일 이름은 `E<두 자리 번호>-<실험-요약>.md` 형식입니다.
+실험 하나에 파일 하나를 `docs/experiments/`에 둡니다. 파일 이름은 `E<두 자리 번호>-<실험-요약>.md` 형식이고, 다른 문서에서는 번호가 아니라 실험 제목으로 링크합니다.
 
 ```markdown
 # E0N: <실험 제목>
 
 - 날짜: YYYY-MM-DD
 - 관련 Risk: 초과 발급
-- 관련 ADR: ADR-000N
+- 관련 결정: <결정 제목>
 
 ## 가설
 ## 환경 (머신, 인프라, 데이터, 도구, 스크립트)
@@ -97,7 +97,7 @@ npm run build      # 빌드
 
 ## 아키텍처
 
-모듈러 모놀리스입니다. 포트는 구현을 둘 이상 비교하는 곳에만 둡니다 ([ADR-0002](../adr/0002-modular-monolith-with-one-port.md)).
+모듈러 모놀리스입니다. 포트는 구현을 둘 이상 비교하는 곳에만 두고, 지금은 발급 전략과 이벤트 발행 두 개입니다 ([모듈러 모놀리스와 포트 기준](../adr/0002-modular-monolith-with-one-port.md), [모듈 사이 반응은 이벤트로](../adr/0003-module-reactions-through-events.md)).
 
 ```
 src/
@@ -118,8 +118,17 @@ src/
     infra/
       issuance/                    # 포트 구현
       persistence/                 # TypeORM 엔티티 (데코레이터는 여기에만)
-  order/  product/  cart/  point/  auth/  payment/
+  order/
+  point/
+    earn-point/
+      on-order-confirmed.handler.ts  # 구독자는 반응하는 모듈 안에 둔다
+  product/  cart/  auth/  payment/
   shared/
+    event/
+      contracts/                   # 이벤트 이름과 payload 타입. 발행·구독 모듈이 모두 여기만 import
+      event-publisher.ts           # 보내는 포트. abstract class
+      event-handler.registry.ts    # 받는 쪽 등록부. @EventHandler로 등록
+      infra/                       # in-process, outbox, kafka 구현과 outbox 워커
     database/                      # BaseTimeEntity, 데이터 소스, 트랜잭션 설정
     redis/
     config/
@@ -137,9 +146,13 @@ bench/k6/                          # 부하 테스트 스크립트
 
 - 다른 모듈은 그 모듈의 `index.ts`가 공개한 서비스만 함수로 호출합니다. HTTP로 부르지 않습니다.
 - 다른 모듈의 테이블을 직접 읽거나 쓰지 않습니다. 예: 주문 모듈은 `member_coupon`을 직접 UPDATE하지 않고, 쿠폰 모듈의 `useCoupon()`을 회원 쿠폰 한 장마다 부릅니다.
+- 결과가 필요하고 같이 성공하거나 실패해야 하는 일은 함수로 부르고, 일어난 일에 다른 모듈이 반응하는 일은 이벤트로 보냅니다. 기준과 이벤트 목록은 [모듈 사이 반응은 이벤트로](../adr/0003-module-reactions-through-events.md)에 있습니다.
+- 이벤트는 트랜잭션 안에서 `EventPublisher`로만 발행하고, 이름은 일어난 일(`ORDER_CONFIRMED`)로 짓습니다. 봉투와 payload는 [이벤트 결정의 이벤트 계약](../adr/0003-module-reactions-through-events.md#이벤트-계약)을 따릅니다.
+- 구독자는 `@EventHandler`로 등록하고, 같은 이벤트를 두 번 받아도 결과가 같게 만듭니다.
 - 이 규칙은 dependency-cruiser로 CI에서 검사합니다. 설정은 첫 코드를 쓸 때 추가합니다.
   - `domain/`은 `infra/`, `ports/`, `@nestjs/*`, `typeorm`, `ioredis`를 import하지 않습니다.
   - 다른 모듈의 파일은 `index.ts`로만 import하고, `shared/`는 예외입니다.
+  - 모듈 사이에 순환 import가 있으면 실패합니다(`no-circular`). 이벤트 계약을 `shared/event/contracts/`에 두는 이유입니다.
 - 규칙 위반 메시지에는 고치는 방법을 적어서, 에이전트도 그 메시지를 보고 스스로 고치게 합니다.
 
 ### 트랜잭션
@@ -147,13 +160,14 @@ bench/k6/                          # 부하 테스트 스크립트
 - `@nestjs-cls/transactional`과 TypeORM 어댑터를 씁니다. 트랜잭션을 인자로 넘기지 않아도 같은 요청 안의 다른 모듈 서비스가 같은 트랜잭션에 참여합니다.
 - `typeorm-transactional`은 2023년 이후 배포가 없어서 쓰지 않습니다.
 - Redis 호출은 DB 트랜잭션 밖에서 해서, Redis 왕복 동안 DB 커넥션을 붙잡지 않습니다.
-- CLS 컨텍스트 밖(분리된 비동기 콜백 등)에서 부르면 트랜잭션 없이 실행될 수 있습니다. 결제를 붙일 때 만드는 비동기 처리에서 테스트로 확인합니다 (미검증).
+- HTTP 요청 밖의 진입점(자동 확정 배치, 발급 준비 스케줄러, 이벤트 구독자, outbox 워커, Kafka 컨슈머)에는 CLS 컨텍스트가 저절로 생기지 않습니다. `ClsService#run`이나 `@UseCls`로 감싸고, 0번 작업에서 배치 하나로 트랜잭션이 걸리는지 테스트로 확인합니다.
+- 프로세스 안 이벤트는 가장 바깥 처리가 성공으로 끝난 뒤 내보냅니다. 커밋 뒤 실행 기능은 `@nestjs-cls/transactional` 문서에서 찾지 못했습니다 (미검증).
 
 ## DB와 엔티티
 
 - 스키마는 [ERD](erd.md)가 기준입니다. ERD를 먼저 고치고 마이그레이션을 씁니다.
 - TypeORM `synchronize`는 끄고, 스키마는 마이그레이션으로만 바꿉니다.
-- 모든 엔티티는 `BaseTimeEntity`(`createdAt`, `updatedAt`)를 상속합니다. 예외로 `point_history`는 고치지 않는 테이블이라 `createdAt`만 둡니다. TypeORM의 `BaseEntity`(Active Record)와 이름이 겹치지 않게 이 이름을 씁니다.
+- 모든 엔티티는 `BaseTimeEntity`(`createdAt`, `updatedAt`)를 상속합니다. 예외로 `point_history`와 `outbox_event`는 고치는 일이 거의 없는 기록이라 `createdAt`만 둡니다. `outbox_event`의 전달 상태는 전용 컬럼(`published_at` 등)으로 남깁니다. TypeORM의 `BaseEntity`(Active Record)와 이름이 겹치지 않게 이 이름을 씁니다.
 - `@DeleteDateColumn`은 soft delete 하는 엔티티(member, coupon, product)에 직접 붙입니다. 이 컬럼이 있으면 조회 동작이 바뀌어서 부모 클래스에 숨기지 않습니다.
 - bigint ID는 `number`로 받고, 드라이버 설정으로 int8을 숫자로 바꿉니다. 구체적인 옵션 이름은 구현할 때 확인합니다 (미검증).
 - 바뀌지 않는 사실은 DB 제약으로, 바뀌는 정책은 도메인 클래스로 지킵니다 ([ERD 공통 규칙](erd.md#공통-규칙)).
@@ -168,27 +182,30 @@ bench/k6/                          # 부하 테스트 스크립트
 | HTTP (e2e) | 시나리오의 요청과 응답. 실제 PostgreSQL·Redis | Vitest + supertest + docker compose | 시나리오 분기, 에러 코드, 트랜잭션, 제약 | 대량 부하 |
 | 동시성 테스트 | 같은 요청 N개를 동시에 보내고 DB 상태 확인 | e2e와 같음 + `Promise.all` | 같은 회원 중복 요청, 쿠폰 이중 사용, 중복 주문, 포인트 이중 사용처럼 동시에만 깨지는 규칙 | 실제 트래픽 크기 |
 | 도메인 클래스 (단위) | 할인 계산, 상품별 나누기, 포인트 규칙, 발급 가능 시간 | Vitest | 금액 계산 (금액 불일치), 규칙 경계값 | DB 동작 |
-| 포트 구현 (계약 테스트) | `IssuanceStrategy`의 모든 구현이 같은 테스트를 통과 | Vitest + 실제 Redis·PostgreSQL | 구현을 바꿔도 결과가 같은지 | 성능 차이 |
+| 포트 구현 (계약 테스트) | `IssuanceStrategy`의 모든 구현, `EventPublisher`의 모든 전달 방식이 같은 테스트를 통과 | Vitest + 실제 Redis·PostgreSQL | 구현을 바꿔도 결과가 같은지 | 성능 차이 |
 | 부하 (실험) | k6 시나리오 | k6 | 초과 발급, 발급 지연·에러, 초과 판매 같은 수치 | 구체적인 원인 (로그·쿼리로 따로 확인) |
 
 - 테스트 이름은 시나리오 문장으로 씁니다. 예: `"마지막 1장에 두 회원이 동시에 요청하면 한 명만 받는다"`
 - 기대값은 코드와 같은 방식으로 다시 계산하지 않고, 문서의 계산 예시(예: [주문 금액 예시](../features/order/README.md)) 숫자를 그대로 씁니다.
 - 이 프로젝트의 문제는 대부분 DB와 Redis의 동시성에서 생겨서, DB를 목(mock)으로 바꾸지 않습니다.
 - 실험의 Before 구현(일부러 깨지는 구현)에도 "이 구현은 동시 요청에서 초과 발급한다"를 확인하는 테스트가 있습니다.
+- 단위 테스트는 병렬로 돌립니다. e2e와 동시성 테스트는 실제로 커밋해서 서로 데이터가 섞이므로, DB 하나에서 파일 하나씩 순서대로 돌리고 파일을 시작할 때 테이블을 비웁니다(`TRUNCATE ... RESTART IDENTITY CASCADE`).
+- 이벤트 구독자의 결과는 `waitForEvents()`로 기다린 뒤 확인합니다 ([이벤트 결정](../adr/0003-module-reactions-through-events.md#테스트)).
+- 서버가 특정 지점에서 죽는 상황은 테스트 전용 환경 변수 `FAULT_POINT`(예: `after-commit-before-publish`)로 그 지점에서 프로세스를 끝내서 재현합니다. 운영 설정에서는 이 값을 읽지 않습니다.
 
 ## 구현을 바꿔 끼우는 곳
 
 - 같은 기능을 여러 방식으로 비교하는 곳은 abstract class로 추상화합니다. 예: `IssuanceStrategy`
 - TypeScript `interface`는 실행 시점에 사라져서 Nest DI 토큰으로 쓸 수 없어서, abstract class를 토큰으로 씁니다. abstract class에는 추상 메서드만 둡니다.
-- 어떤 구현을 쓸지는 모듈의 `useFactory` 한 곳에서 환경 변수로 정합니다. 예: `ISSUANCE_STRATEGY=redis`
+- 어떤 구현을 쓸지는 모듈의 `useFactory` 한 곳에서 환경 변수로 정합니다. 예: `ISSUANCE_STRATEGY=redis`, `EVENT_TRANSPORT=outbox`
 - 바꿔 끼우지 않는 곳에는 추상화를 만들지 않습니다. 구현이 하나뿐이고 테스트 대역도 쓰지 않는 포트가 생기면 지웁니다.
 - 일부러 깨지게 만든 실험용 구현은 Before 수치를 다시 낼 때 쓰므로 지우지 않습니다.
 
 ## 하지 않는 것
 
-- 모든 저장소에 포트·어댑터·매퍼를 두는 정석 헥사고날 구조를 쓰지 않습니다. 진입점이 둘 이상이 되거나(예: 결제를 붙일 때 생기는 비동기 워커) 도메인 규칙이 매핑 비용보다 커지면 다시 검토합니다.
-- `@nestjs/cqrs` 같은 명령·이벤트 버스를 쿠폰 발급과 주문에서 쓰지 않습니다.
-- 사라지면 안 되는 부수 효과를 프로세스 안 이벤트(`@nestjs/event-emitter`)로 보내지 않습니다. 서버가 죽으면 이 이벤트는 사라집니다.
+- 모든 저장소에 포트·어댑터·매퍼를 두는 정석 헥사고날 구조를 쓰지 않습니다. 진입점이 둘 이상이 되거나(예: outbox 워커, Kafka 컨슈머) 도메인 규칙이 매핑 비용보다 커지면 다시 검토합니다.
+- `@nestjs/cqrs` 같은 명령 버스를 쓰지 않습니다. 명령은 공개 서비스 함수로 부르고, 이벤트는 `EventPublisher` 하나로 보냅니다.
+- 사라지면 안 되는 반응을 프로세스 안 이벤트(`@nestjs/event-emitter`)로 운영하지 않습니다. 서버가 죽으면 이 이벤트는 사라집니다. 구매 확정 적립에서는 누락을 재현하는 Before 구현으로만 씁니다.
 
 ---
 

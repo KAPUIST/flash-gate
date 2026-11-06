@@ -1,7 +1,7 @@
 # 쿠폰 (coupon)
 
 행사 시작 직후 요청이 몰려도 한정 수량 쿠폰을 정해진 수량만큼만 발급합니다.
-발급 결정은 Redis가 하고, DB는 회원 쿠폰을 기록합니다 ([ADR-0001](../../adr/0001-redis-decides-coupon-issue.md)).
+발급 결정은 Redis가 하고, DB는 회원 쿠폰을 기록합니다 ([Redis가 쿠폰 발급을 결정](../../adr/0001-redis-decides-coupon-issue.md)).
 
 | 항목 | 내용 |
 |---|---|
@@ -64,6 +64,7 @@
    6. 한정 수량을 다 썼으면 "쿠폰이 소진되었습니다"가 보입니다. `409 COUPON_SOLD_OUT` (초과 발급)
 3. 모두 통과하면 회원 쿠폰이 생기고 "쿠폰을 받았습니다"가 보입니다. `201`
 4. 저장에 실패하면 차감한 수량을 되돌리고 "잠시 후 다시 시도해 주세요"가 보입니다. `503 COUPON_RETRY` (발급 수 불일치)
+   - 타임아웃처럼 저장됐는지 모르면 DB를 다시 읽고, 저장됐으면 `201`로 응답합니다. 자세한 처리는 [Flow 실패 처리](flows.md#실패-시-처리)에 있습니다.
 
 경계 상황:
 
@@ -117,7 +118,7 @@
 Redis가 재시작됐거나 수량이 어긋났을 때 합니다.
 
 1. 운영자가 쿠폰을 발급 중단(`STOPPED`)합니다. 관리자 기능이 없어서 SQL로 바꿉니다 (가정).
-2. 쿠폰 정보 캐시가 만료되도록 1초 이상 기다립니다.
+2. 발급에 쓰는 DB 문장 타임아웃보다 오래 기다립니다. 타임아웃은 설정값이고 5초로 둡니다 (가정). 중단 전에 쿠폰 정보를 읽은 요청의 INSERT가 다시 세기 뒤에 커밋되지 않게 하려는 것이고, 1초 캐시도 이 시간 안에 만료됩니다.
 3. 발급 준비와 같은 방법으로 Redis 키를 다시 만듭니다.
 4. 쿠폰을 다시 `ACTIVE`로 바꿉니다.
 
@@ -142,6 +143,7 @@ Redis가 재시작됐거나 수량이 어긋났을 때 합니다.
 | 메서드 | 입력 | 하는 일 | 실패 |
 |---|---|---|---|
 | `getUsableCoupons(memberId, now)` | 회원 ID, 지금 시각 | `ISSUED`이고 사용 기한이 남은 회원 쿠폰과 쿠폰 정보(적용 범위, 할인, 최소 주문 금액, 대상 상품·브랜드)를 돌려줍니다. 고르는 판단은 주문 모듈이 합니다 | |
+| `getMemberCoupons(memberId, memberCouponIds)` | 회원 ID, 회원 쿠폰 ID 목록 | 요청한 ID마다 회원 쿠폰과 쿠폰 정보(이름, 적용 범위, 할인, 최소 주문 금액, 대상 상품·브랜드, 사용 기한, 상태)를 돌려주고, 그 회원의 것이 아니면 내 것 아님 표시를 돌려줍니다. 쓸 수 없는 이유(`EXPIRED`, `ALREADY_USED`, `NOT_OWNED`)는 주문 도메인 클래스가 판단합니다 | |
 | `useCoupon(memberId, memberCouponId)` | 회원 ID, 회원 쿠폰 ID | `UPDATE member_coupon SET status = 'USED', used_at = now() WHERE id = ? AND member_id = ? AND status = 'ISSUED'`. 바뀐 행이 0개면 실패 | 쓸 수 없는 쿠폰 (주문 모듈이 `409 ORDER_COUPON_UNAVAILABLE`로 응답) |
 | `restoreCoupon(memberCouponId)` | 회원 쿠폰 ID | `UPDATE member_coupon SET status = 'ISSUED', used_at = NULL WHERE id = ? AND status = 'USED'`. 사용 기한이 지났어도 되돌립니다 | |
 
@@ -151,8 +153,8 @@ Redis가 재시작됐거나 수량이 어긋났을 때 합니다.
 
 | 종류 | 문서 | 관련 Risk |
 |---|---|---|
-| ADR | [ADR-0001: 쿠폰 발급은 Redis가 결정하고, DB는 기록만 한다](../../adr/0001-redis-decides-coupon-issue.md) | 초과 발급, 발급 수 불일치, 발급 지연·에러, Redis 재시작 |
-| ADR | [ADR-0002: 모듈러 모놀리스로 만들고, 포트는 발급 전략 하나만 둔다](../../adr/0002-modular-monolith-with-one-port.md) | |
+| 결정 | [쿠폰 발급은 Redis가 결정하고, DB는 기록만 한다](../../adr/0001-redis-decides-coupon-issue.md) | 초과 발급, 발급 수 불일치, 발급 지연·에러, Redis 재시작 |
+| 결정 | [모듈러 모놀리스로 만들고, 포트는 발급 전략 하나만 둔다](../../adr/0002-modular-monolith-with-one-port.md) | |
 | 실험 | 아직 없습니다. 쿠폰 초과 발급 재현과 해결 실험에서 [일부러 깨뜨리는 첫 구현](flows.md#일부러-깨뜨리는-첫-구현-before)과 여러 발급 전략을 같은 시나리오로 잴 예정입니다 | 초과 발급, 발급 수 불일치, 발급 지연·에러 |
 
 ---

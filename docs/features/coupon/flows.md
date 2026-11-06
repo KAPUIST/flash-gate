@@ -28,7 +28,10 @@ flowchart TD
     incr -- 예 --> insert{"DB INSERT member_coupon"}
     insert -- 성공 --> ok["201 발급 완료"]
     insert -- "UNIQUE 위반" --> dupDb["DECR만 되돌림<br/>(회원은 SET에 남김)"] --> eDup2["409 COUPON_ALREADY_ISSUED"]
-    insert -- "그 밖의 실패" --> comp["SREM + DECR 되돌림"] --> eRetry["503 COUPON_RETRY"]
+    insert -- "실패가 확실함<br/>(UNIQUE 외 제약 위반, 보내기 전 연결 거부)" --> comp["SREM + DECR 되돌림"] --> eRetry["503 COUPON_RETRY"]
+    insert -- "결과를 모름<br/>(타임아웃, 보낸 뒤 연결 끊김)" --> reread{"member_coupon 다시 읽기"}
+    reread -- "행 있음" --> ok
+    reread -- "행 없음 또는 읽기 실패" --> keep["SREM만 되돌림<br/>(DECR 하지 않음) + 로그"] --> eRetry
 ```
 
 - 1~4번 확인(쿠폰 있음, 발급 중단, 시작, 종료)은 DB를 읽지 않습니다. 쿠폰 정보는 서버 메모리에 1초 캐시합니다 (가정). Redis를 쓰는 목적이 DB 부담을 줄이는 것이라서 요청마다 쿠폰 행을 읽지 않습니다.
@@ -67,10 +70,19 @@ sequenceDiagram
             else UNIQUE 위반 (DB에는 이미 있음)
                 A->>R: DECR coupon:{id}:count
                 A-->>U: 409 COUPON_ALREADY_ISSUED
-            else 그 밖의 실패
+            else 실패가 확실함 (UNIQUE 외 제약 위반, 보내기 전 연결 거부)
                 A->>R: SREM coupon:{id}:members {memberId}
                 A->>R: DECR coupon:{id}:count
                 A-->>U: 503 COUPON_RETRY
+            else 결과를 모름 (타임아웃, 보낸 뒤 연결 끊김)
+                A->>D: SELECT id FROM member_coupon WHERE member_id = ? AND coupon_id = ?
+                alt 행 있음 (실제로는 커밋됨)
+                    A-->>U: 201 발급 완료
+                else 행 없음 또는 다시 읽기 실패
+                    A->>R: SREM coupon:{id}:members {memberId}
+                    Note over A: DECR 하지 않음. 로그를 남김
+                    A-->>U: 503 COUPON_RETRY
+                end
             end
         end
     end
@@ -89,7 +101,7 @@ sequenceDiagram
 | 그 뒤 A의 저장이 실패해 DECR | 100. 한정 수량과 같아서 다음 요청도 소진 | 99. 다음 요청 C가 100번째로 받음 |
 | 결과 | 영구히 1장 덜 발급 | 덜 발급 없음 |
 
-처리 중인 요청이 겹치는 아주 짧은 순간에는 자리가 났는데도 소진 응답이 나갈 수 있고, 이 경우는 허용합니다. INCR 결과가 한정 수량 이하인 요청만 INSERT까지 가기 때문에 초과 발급은 일어나지 않습니다.
+처리 중인 요청이 겹치는 아주 짧은 순간에는 자리가 났는데도 소진 응답이 나갈 수 있고, 이 경우는 허용합니다. INCR 결과가 한정 수량 이하인 요청만 INSERT까지 갑니다. 그래서 Redis 발급 수가 DB의 회원 쿠폰 수보다 작아지지 않으면 초과 발급은 일어나지 않습니다. 결과를 모르는 저장 실패에서 DECR을 하지 않는 것도 이 조건을 지키려는 것이고, Redis 재시작은 이 조건을 깨서 [Redis 복구](#시나리오-4-시스템-발급-준비와-redis-복구)로 다시 맞춥니다.
 
 ## 실패 시 처리
 
@@ -98,11 +110,20 @@ sequenceDiagram
 | SADD 실패 (Redis 연결 오류) | 아무것도 바뀌지 않음. 503 `COUPON_RETRY` | 없음 | 발급 지연·에러 |
 | INCR 실패 | SREM으로 되돌림. 503 | 되돌리기도 실패하면 회원이 SET에 남아 "이미 받음"으로 막힘. Redis 복구로 해결 | 발급 수 불일치 |
 | INSERT가 UNIQUE 위반 | DECR만 하고 409 `COUPON_ALREADY_ISSUED`. 회원은 SET에 그대로 둡니다 | 없음. Redis가 DB와 다시 맞춰집니다 | 같은 회원 중복 요청, 발급 수 불일치 |
-| INSERT가 그 밖의 이유로 실패 (DB 오류, 타임아웃) | SREM + DECR로 되돌리고 503 | 타임아웃인데 실제로는 커밋됐으면, 회원 쿠폰은 있는데 Redis는 없음. 다음 요청이 UNIQUE 위반으로 위 줄처럼 맞춰집니다 | 발급 수 불일치 |
+| INSERT가 실패한 것이 확실함 (UNIQUE 외 제약 위반, 보내기 전 연결 거부) | SREM + DECR로 되돌리고 503 | 없음 | 발급 수 불일치 |
+| INSERT 결과를 모름 (타임아웃, 보낸 뒤 연결 끊김) | `member_coupon`에서 그 회원과 쿠폰의 행을 다시 읽습니다. 행이 있으면 되돌리지 않고 201을 응답합니다. 행이 없거나 다시 읽기도 실패하면 SREM만 하고 DECR은 하지 않은 채 503을 응답하고 로그를 남깁니다 | INSERT가 끝내 커밋되지 않았으면 1장 덜 발급. Redis 복구로 해결 | 초과 발급, 발급 수 불일치 |
 | 되돌리기(SREM, DECR) 자체가 실패 | 503을 응답하고 로그를 남깁니다 | Redis 발급 수가 실제보다 커서 덜 발급. Redis 복구로 해결 | 발급 수 불일치 |
 | INCR 뒤, INSERT 전에 서버가 죽음 | 처리할 기회가 없음 | 덜 발급. Redis 복구로 해결 | 발급 수 불일치 |
 | SADD 뒤, INCR 전에 서버가 죽음 | 처리할 기회가 없음 | 그 회원이 "이미 받음"으로 막힘. Redis 복구로 해결 | 발급 수 불일치 |
 | Redis 재시작 | 없음 (아직) | 발급 수가 0부터 다시 시작해 초과 발급 | Redis 재시작 |
+
+#### 결과를 모르는 실패에서 바로 되돌리지 않는 이유
+
+- INSERT가 타임아웃났는데 실제로는 커밋됐다면, 바로 SREM + DECR을 하면 Redis 발급 수가 DB보다 1 작아집니다.
+- 같은 회원이 다시 요청하면 SADD, INCR, UNIQUE 위반, DECR 순서로 끝나서 발급 수는 계속 1 작게 남고, 그만큼 다른 회원에게 한정 수량보다 1장 더 나갑니다.
+- 다시 읽었을 때 행이 없어도, 연결이 끊긴 INSERT가 그 뒤에 커밋될 수 있습니다. 그래서 결과를 모르면 DECR은 하지 않고, 회원이 다시 시도할 수 있게 SREM만 합니다.
+- 이렇게 하면 Redis 발급 수는 DB보다 커질 수만 있고 작아지지 않습니다. 남는 어긋남은 Redis 복구로 메우는 덜 발급뿐입니다.
+- 다시 읽기는 응답을 201로 바로잡는 데만 씁니다. 같은 회원이 다시 요청하면 늦게 커밋된 행은 UNIQUE 위반과 DECR로, 커밋되지 않은 행은 새 발급으로 맞춰집니다.
 
 #### UNIQUE 위반일 때 회원을 SET에서 빼지 않는 이유
 
@@ -152,7 +173,7 @@ sequenceDiagram
 
     opt Redis 복구일 때만
         S->>D: UPDATE coupon SET status = 'STOPPED' WHERE id = ?
-        Note over S: 캐시 만료를 위해 1초 이상 대기
+        Note over S: 발급 DB 문장 타임아웃(설정값, 예: 5초)보다 오래 대기
     end
     S->>D: SELECT member_id FROM member_coupon WHERE coupon_id = ?
     S->>D: SELECT COUNT(*) FROM member_coupon WHERE coupon_id = ?
@@ -171,17 +192,34 @@ sequenceDiagram
 
 ## 일부러 깨뜨리는 첫 구현 (Before)
 
-발급 방식은 `IssuanceStrategy` 포트 뒤에 둡니다 ([ADR-0002](../../adr/0002-modular-monolith-with-one-port.md)). 환경 변수 `ISSUANCE_STRATEGY` 하나로 바꿔 끼우고, 같은 k6 시나리오로 잽니다.
+발급 방식은 `IssuanceStrategy` 포트 뒤에 둡니다 ([모듈러 모놀리스와 포트 기준](../../adr/0002-modular-monolith-with-one-port.md)). 환경 변수 `ISSUANCE_STRATEGY` 하나로 바꿔 끼우고, 같은 k6 시나리오로 잽니다.
 
 | 구현 | 방식 | 예상 | 역할 |
 |---|---|---|---|
 | `CountThenInsertIssuance` | `SELECT COUNT(*)`로 남은 수량을 확인하고, 잠금 없이 INSERT | 동시 요청이 같은 COUNT를 읽어 초과 발급 (초과 발급 재현) | Before. 일부러 깨뜨린 구현 |
 | `PessimisticLockIssuance` | 트랜잭션 안에서 `SELECT ... FROM coupon WHERE id = ? FOR UPDATE`, COUNT, INSERT 순서로 실행 | 초과 발급은 0. 모든 요청이 쿠폰 행 잠금을 기다려 p99가 느림 (발급 지연·에러 비교 대상) | DB만으로 맞게 만든 기준선 |
-| `RedisFirstIssuance` | 이 문서의 [쿠폰 발급받기](#시나리오-2-쿠폰-발급받기) 흐름 (SADD, INCR, INSERT 순서) | 초과 발급 0, 소진 요청이 DB에 가지 않음 | 채택한 구현 ([ADR-0001](../../adr/0001-redis-decides-coupon-issue.md)) |
+| `RedisFirstIssuance` | 이 문서의 [쿠폰 발급받기](#시나리오-2-쿠폰-발급받기) 흐름 (SADD, INCR, INSERT 순서) | 초과 발급 0, 소진 요청이 DB에 가지 않음 | 채택한 구현 ([Redis가 쿠폰 발급을 결정](../../adr/0001-redis-decides-coupon-issue.md)) |
 
 - `findOne`, 값 변경, `save()` 순서로 수량 컬럼을 깎는 고전적인 갱신 손실 구현은 쓰지 않습니다. 발급 수 컬럼(`issued_quantity`)을 두지 않기로 해서 깎을 컬럼이 없고, 같은 "읽고 나서 쓰기" 문제는 `CountThenInsertIssuance`로 재현합니다.
 - DB만 쓰는 조건부 UPDATE(`WHERE issued_quantity < total_quantity`)도 같은 이유로 비교 대상에서 뺐습니다. 카운터 컬럼 없이 DB만으로 맞게 하는 방법은 쿠폰 행 잠금입니다.
 - 실험용 구현은 Before 수치를 다시 낼 때 쓰므로 지우지 않습니다 ([개발 규칙](../../reference/conventions.md#구현을-바꿔-끼우는-곳)).
+
+#### 발급 전략 계약
+
+```ts
+issue(memberId, couponId): Promise<IssueResult>
+
+type IssueResult =
+  | { type: 'ISSUED'; memberCouponId: number }
+  | { type: 'ALREADY_ISSUED' }
+  | { type: 'SOLD_OUT' }
+  | { type: 'RETRY' };
+```
+
+- 유스케이스는 동시성과 상관없는 확인 1~4번(없음, 중단, 시작 전, 종료)을 먼저 하고 나서 전략을 부릅니다. 전략은 5번 이미 받음과 6번 소진을 판단하고 회원 쿠폰을 저장합니다.
+- 모든 구현은 이미 받음을 소진보다 먼저 판단합니다. 유스케이스는 `ISSUED`를 201로, `ALREADY_ISSUED`와 `SOLD_OUT`을 409로, `RETRY`를 503 `COUPON_RETRY`로 응답합니다.
+- 기간 확인은 유스케이스가 끝낸 뒤라서 전략은 시각을 받지 않습니다. `issued_at`에는 구현이 수량을 차지한 시각을 넣어서, `RedisFirstIssuance`는 INCR 결과를 받은 시각을 넣습니다.
+- 계약 테스트는 Before인 `CountThenInsertIssuance`까지 모든 구현을 요청 한 건씩 순서대로 보내서 돌립니다. 동시성 테스트는 Before 구현에서 실패하고 `RedisFirstIssuance`에서 통과해야 합니다.
 
 ---
 
