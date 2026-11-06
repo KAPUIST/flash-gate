@@ -22,7 +22,7 @@
 | [order_coupon](#order_coupon-주문에-쓴-쿠폰) | order | 주문 | 주문에 쓴 쿠폰 |
 | [member_point](#member_point-point_history-포인트) | point | 주문 | 포인트 잔액 |
 | [point_history](#member_point-point_history-포인트) | point | 주문 | 포인트 내역. 추가만 하고 고치지 않음 |
-| [outbox_event](#outbox_event-이벤트-보관함) | shared/event | 주문 | 발행한 이벤트. 전달을 마치면 시각을 기록 |
+| [outbox_event](#outbox_event-이벤트-보관함) | shared/event | 이벤트 | 발행한 이벤트. 전달을 마치면 시각을 기록 |
 
 ## 다이어그램
 
@@ -353,7 +353,7 @@ erDiagram
 
 - `uq_order_item_order_product`: `UNIQUE(order_id, product_id)`. 한 주문에 같은 상품을 두 줄로 넣지 않습니다.
 - `ix_order_item_product_id`: 상품별 판매 집계에 씁니다.
-- 주문 쿠폰 할인과 포인트는 상품 금액(상품 쿠폰 적용 후) 비율로 나눕니다. 원 미만은 버리고, 남은 원 단위는 금액이 가장 큰 상품에 더합니다. 지금은 전체 취소만 하지만, 나중에 부분 취소 때 돌려줄 금액의 근거가 됩니다.
+- 주문 쿠폰 할인과 포인트는 상품별로 나눠 이 테이블에 기록합니다. 나누는 규칙(비율, 원 미만 버림, 남는 원을 받는 줄)은 [주문 기능의 금액 계산](../features/order/README.md#금액-계산-규칙)에 한 번만 적습니다. 지금은 전체 취소만 하지만, 나중에 부분 취소 때 돌려줄 금액의 근거가 됩니다.
 
 ### order_coupon (주문에 쓴 쿠폰)
 
@@ -411,6 +411,7 @@ erDiagram
 - `uq_outbox_event_type_aggregate`: `UNIQUE(event_type, aggregate_id)`. 한 주문의 구매 확정됨 이벤트는 하나입니다.
 - `ix_outbox_event_unpublished`: `(id) WHERE published_at IS NULL`. 워커와 릴레이가 이 인덱스로 보낼 행을 찾습니다.
 - 행을 넣는 것은 `EventPublisher`의 outbox 구현뿐이고, 발행하는 모듈은 이 테이블을 모릅니다.
+- 계속 실패하는 이벤트의 실패 횟수·마지막 에러를 남길 컬럼은 outbox를 만드는 작업에서 정합니다.
 
 ## 반정규화한 곳과 지키는 장치
 
