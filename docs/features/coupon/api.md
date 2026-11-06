@@ -100,7 +100,7 @@
 | 4 | 409 | `COUPON_ISSUE_ENDED` | 발급 기간 끝남 | |
 | 5 | 409 | `COUPON_ALREADY_ISSUED` | 이미 받음 (Redis SADD 0, 또는 DB UNIQUE 위반) | 같은 회원 중복 요청 |
 | 6 | 409 | `COUPON_SOLD_OUT` | 한정 수량을 다 씀 | 초과 발급 |
-| 7 | 503 | `COUPON_RETRY` | Redis 오류 또는 저장 실패. 수량을 되돌렸으니 다시 시도 | 발급 수 불일치 |
+| 7 | 503 | `COUPON_RETRY` | Redis 오류 또는 저장 실패. 다시 시도. 저장됐는지 모르면 발급 수(DECR)는 되돌리지 않음 ([실패 시 처리](flows.md#실패-시-처리)) | 발급 수 불일치 |
 
 - 부하 테스트에서 `409`는 정상 응답으로 세고, `503`은 따로 셉니다. `500`은 0건이 목표입니다 (발급 지연·에러).
 - `COUPON_ALREADY_ISSUED`와 `COUPON_SOLD_OUT`이 함께 해당되면 이미 받음이 먼저입니다. 이미 받은 회원에게는 소진을 알려줄 필요가 없기 때문입니다.

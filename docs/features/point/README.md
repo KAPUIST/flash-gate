@@ -127,11 +127,14 @@
 |---|---|---|---|
 | `getBalance(memberId)` | 회원 ID | 잔액. 행이 없으면 0 | |
 | `calculateUsableAmount(memberId, amountAfterCoupons)` | 회원 ID, 쿠폰 할인 뒤 금액 | `min(잔액, 10% 한도)`. 5,000 미만이면 0 | |
+| `checkUse(memberId, amount, amountAfterCoupons)` | 회원 ID, 쓸 포인트, 쿠폰 할인 뒤 금액 | 차감하지 않고 `PointPolicy`와 잔액으로 쓸 수 있는지만 확인합니다. 주문의 트랜잭션 전 검사에서 부릅니다 | `POINT_BELOW_MINIMUM_USE`, `POINT_EXCEEDS_LIMIT`, `POINT_INSUFFICIENT` |
 | `use(memberId, orderId, amount, amountAfterCoupons)` | 회원 ID, 주문 ID, 쓸 포인트, 쿠폰 할인 뒤 금액 | 규칙을 검사하고 조건부로 차감한 뒤 `USE` 내역을 남깁니다 | `POINT_BELOW_MINIMUM_USE`, `POINT_EXCEEDS_LIMIT`, `POINT_INSUFFICIENT` |
 | `cancelUse(memberId, orderId)` | 회원 ID, 주문 ID | 그 주문의 `USE` 금액만큼 되돌리고 `USE_CANCEL` 내역을 남깁니다. 쓴 적이 없으면 아무것도 하지 않습니다 | |
+| `getEarnedAmount(orderId)` | 주문 ID | 그 주문의 `EARN` 내역 금액. 내역이 없으면 `null` (확정 전, 적립 구독자가 아직 끝나지 않음, 적립액 0). 주문 상세의 `earnedPointAmount`에 씁니다 | |
 | `earn(memberId, orderId, paymentAmount)` | 회원 ID, 주문 ID, 결제 금액 | 5%를 적립하고 `EARN` 내역을 남깁니다. 적립액이 0이면 아무것도 하지 않습니다 | 같은 주문의 `EARN` 내역이 이미 있으면 UNIQUE 위반 (포인트 이중 적립). 구독자는 적립 트랜잭션을 롤백하고 이미 처리된 것으로 보고 성공으로 끝냅니다 |
 
 - `amount`가 0이면 `use`는 아무것도 하지 않아서, 포인트를 쓰지 않는 주문도 같은 경로로 부를 수 있습니다.
+- `PointPolicy`는 공개하지 않습니다. 주문 서비스는 트랜잭션 전에 `checkUse()`를 불러서, 사용 규칙이 두 곳에 생기지 않고 주문 도메인 클래스가 포인트 모듈을 import하지 않습니다.
 - 에러는 도메인 에러로 던지고, 주문 API가 `409`로 바꿔 응답합니다 ([API](api.md#다른-기능의-응답에-쓰이는-에러)).
 
 ---
